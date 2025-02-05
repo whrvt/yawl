@@ -19,15 +19,14 @@
  */
 
 #define _GNU_SOURCE
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <curl/curl.h>
 #include <archive.h>
-#include <archive_entry.h>
 #include <pwd.h>
 
 #define PROG_NAME "yawl"
