@@ -1,5 +1,5 @@
 /*
- * Simple SLR bootstrapper program
+ * Simple Steam Linux Runtime bootstrapper/launcher program
  *
  * Copyright (C) 2025 William Horvath
  *
