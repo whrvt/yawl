@@ -195,7 +195,7 @@ case "$LIB" in
             "AR=$AR l \"$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS\""
         )
 
-        "${FLAGS_ZST[@]}" make libzstd.a && "${FLAGS_ZST[@]}" make libzstd.pc && \
+        "${FLAGS_ZST[@]}" make -j"$JOBS" libzstd.a && "${FLAGS_ZST[@]}" make -j"$JOBS" libzstd.pc && \
         install -Dm644 "libzstd.pc" "$PREFIX/lib/pkgconfig/libzstd.pc" && \
         cd .. && \
         install -Dm644 "lib/libzstd.a" "$PREFIX/lib/libzstd.a" && \
