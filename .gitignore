@@ -12,6 +12,7 @@ Makefile.in
 /build-aux/config.guess
 /build-aux/config.sub
 /build-aux/depcomp
+/build-aux/install-sh
 /build-aux/ltmain.sh
 /build-aux/missing
 /build-aux/test-driver
