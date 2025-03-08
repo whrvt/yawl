@@ -19,6 +19,7 @@
  */
 
 #define _GNU_SOURCE
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +34,8 @@
 
 #define RUNTIME_VERSION "sniper"
 #define RUNTIME_BASE_URL "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION "/snapshots/latest-container-runtime-public-beta"
-#define RUNTIME_ARCHIVE "SteamLinuxRuntime_" RUNTIME_VERSION ".tar.xz"
+#define RUNTIME_PREFIX "SteamLinuxRuntime_"
+#define RUNTIME_ARCHIVE RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
 #define BUFFER_SIZE 8192
 
 static char *get_home_dir(void)
@@ -67,11 +69,15 @@ static int download_file( const char *url, const char *output_path )
 {
     CURL *curl = curl_easy_init();
     if (!curl)
+    {
+        fprintf( stderr, "Debug: couldn't init curl, errno %d\n", errno );
         return -1;
+    }
 
     FILE *fp = fopen( output_path, "wb" );
     if (!fp)
     {
+        fprintf( stderr, "Debug: couldn't open output_path, errno %d\n", errno );
         curl_easy_cleanup( curl );
         return -1;
     }
@@ -102,6 +108,8 @@ static int extract_archive( const char *archive_path, const char *extract_path )
     a = archive_read_new();
     archive_read_support_format_tar( a );
     archive_read_support_filter_xz( a );
+    archive_read_support_filter_zstd( a );
+    archive_read_support_filter_lzip( a );
 
     ext = archive_write_disk_new();
     archive_write_disk_set_options( ext, flags );
@@ -109,12 +117,15 @@ static int extract_archive( const char *archive_path, const char *extract_path )
 
     if (( r = archive_read_open_filename( a, archive_path, BUFFER_SIZE ) ))
     {
+        fprintf( stderr, "Debug: Extracting failed (read_open_filename), errno: %d, string: %s\n",
+                 archive_errno( a ), archive_error_string( a ) );
         return -1;
     }
 
     char *old_cwd = getcwd( NULL, 0 );
     if (chdir( extract_path ) != 0)
     {
+        fprintf( stderr, "Debug: Extracting failed (chdir), errno: %d\n", errno );
         free( old_cwd );
         return -1;
     }
@@ -145,7 +156,6 @@ static int extract_archive( const char *archive_path, const char *extract_path )
     archive_read_free( a );
     archive_write_close( ext );
     archive_write_free( ext );
-
     return 0;
 }
 
@@ -157,7 +167,7 @@ static int setup_runtime(void)
 
     char *runtime_dir = join_path( home, ".local/share/" PROG_NAME );
     char *archive_path = join_path( runtime_dir, RUNTIME_ARCHIVE );
-    char *runtime_path = join_path( runtime_dir, "SteamLinuxRuntime_" RUNTIME_VERSION );
+    char *runtime_path = join_path( runtime_dir, RUNTIME_PREFIX RUNTIME_VERSION );
 
     ensure_dir( runtime_dir );
 
@@ -182,6 +192,7 @@ static int setup_runtime(void)
     }
 
     fprintf( stderr, "Extracting runtime...\n" );
+
     if (extract_archive( archive_path, runtime_dir ) != 0)
     {
         fprintf( stderr, "Failed to extract runtime\n" );
@@ -352,7 +363,7 @@ int main( int argc, char *argv[] )
         return 1;
 
     char *entry_point;
-    asprintf( &entry_point, "%s/.local/share/" PROG_NAME "/SteamLinuxRuntime_%s/_v2-entry-point",
+    asprintf( &entry_point, "%s/.local/share/" PROG_NAME "/" RUNTIME_PREFIX "%s/_v2-entry-point",
               home, RUNTIME_VERSION );
 
     if (access( entry_point, X_OK ) != 0)

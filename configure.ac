@@ -20,6 +20,14 @@ AC_DEFUN([AC_PROG_STRIP], [
 ])
 AC_PROG_STRIP
 
+AC_DEFUN([AC_PROG_AR], [
+    AC_CHECK_PROG([AR], [ar], [ar])
+    if test -z "$AR"; then
+        AC_MSG_ERROR([ar not found])
+    fi
+])
+AC_PROG_AR
+
 # Check pkg-config
 PKG_PROG_PKG_CONFIG
 
@@ -31,6 +39,7 @@ export CFLAGS="$CFLAGS $shared_cflags -std=gnu23"
 export CXXFLAGS="$CXXFLAGS $shared_cflags -std=gnu++23"
 export LDFLAGS="$LDFLAGS -fuse-ld=lld -static -static-libgcc -Wl,--gc-sections,-s"
 export STRIP="$STRIP"
+export AR="$AR"
 
 export PTHREAD_EXTLIBS="-Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
 
@@ -40,6 +49,8 @@ AC_SUBST([CFLAGS])
 AC_SUBST([CXXFLAGS])
 AC_SUBST([LDFLAGS])
 AC_SUBST([STRIP])
+AC_SUBST([AR])
+
 AC_SUBST([PTHREAD_EXTLIBS])
 
 # Get number of processors for parallel builds
@@ -72,7 +83,6 @@ AC_SUBST([PKG_CONFIG_PATH])
 export PKG_CONFIG_LIBDIR="$deps_prefix/lib:$PKG_CONFIG_LIBDIR"
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
-
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$deps_prefix/lib/libunistring.a"; then
     AC_MSG_NOTICE([Building libunistring])
@@ -97,6 +107,24 @@ if ! test -f "$deps_prefix/lib/libz.a"; then
     sh build-aux/download-deps.sh libz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libz])
 fi
 
+# Download and build xz
+if ! test -f "$deps_prefix/lib/liblzma.a"; then
+    AC_MSG_NOTICE([Building xz])
+    sh build-aux/download-deps.sh xz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build xz])
+fi
+
+# Download and build zstd
+if ! test -f "$deps_prefix/lib/libzstd.a"; then
+    AC_MSG_NOTICE([Building zstd])
+    sh build-aux/download-deps.sh zstd "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build zstd])
+fi
+
+# Download and build libarchive
+if ! test -f "$deps_prefix/lib/libarchive.a"; then
+    AC_MSG_NOTICE([Building libarchive])
+    sh build-aux/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
+fi
+
 # Download and build openssl
 if ! test -f "$deps_prefix/lib/libssl.a" || ! test -f "$deps_prefix/lib/libcrypto.a"; then
     AC_MSG_NOTICE([Building openssl])
@@ -109,18 +137,6 @@ if ! test -f "$deps_prefix/lib/libcurl.a"; then
     sh build-aux/download-deps.sh curl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build curl])
 fi
 
-# Download and build xz
-if ! test -f "$deps_prefix/lib/liblzma.a"; then
-    AC_MSG_NOTICE([Building xz])
-    sh build-aux/download-deps.sh xz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build xz])
-fi
-
-# Download and build libarchive
-if ! test -f "$deps_prefix/lib/libarchive.a"; then
-    AC_MSG_NOTICE([Building libarchive])
-    sh build-aux/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
-fi
-
 # Set up flags to use our built libraries
 
 export LIBUNISTRING_CFLAGS="-I$deps_prefix/include"
@@ -131,14 +147,16 @@ export LIBIDN2_CFLAGS="-I$deps_prefix/include"
 export LIBIDN2_LIBS="$deps_prefix/lib/libidn2.a"
 export LIBZ_CFLAGS="-I$deps_prefix/include"
 export LIBZ_LIBS="$deps_prefix/lib/libz.a"
+export LIBLZMA_CFLAGS="-I$deps_prefix/include"
+export LIBLZMA_LIBS="$deps_prefix/lib/liblzma.a"
+export LIBZSTD_CFLAGS="-I$deps_prefix/include"
+export LIBZSTD_LIBS="$deps_prefix/lib/libzstd.a"
+export LIBARCHIVE_CFLAGS="-I$deps_prefix/include"
+export LIBARCHIVE_LIBS="$deps_prefix/lib/libarchive.a"
 export OPENSSL_CFLAGS="-I$deps_prefix/include"
 export OPENSSL_LIBS="$deps_prefix/lib/libssl.a $deps_prefix/lib/libcrypto.a"
 export CURL_CFLAGS="-DCURL_STATICLIB -I$deps_prefix/include"
 export CURL_LIBS="$deps_prefix/lib/libcurl.a"
-export LIBARCHIVE_CFLAGS="-I$deps_prefix/include"
-export LIBARCHIVE_LIBS="$deps_prefix/lib/libarchive.a"
-export LIBLZMA_CFLAGS="-I$deps_prefix/include"
-export LIBLZMA_LIBS="$deps_prefix/lib/liblzma.a"
 
 AC_SUBST([LIBUNISTRING_CFLAGS])
 AC_SUBST([LIBUNISTRING_LIBS])
@@ -148,14 +166,16 @@ AC_SUBST([LIBIDN2_CFLAGS])
 AC_SUBST([LIBIDN2_LIBS])
 AC_SUBST([LIBZ_CFLAGS])
 AC_SUBST([LIBZ_LIBS])
+AC_SUBST([LIBLZMA_CFLAGS])
+AC_SUBST([LIBLZMA_LIBS])
+AC_SUBST([LIBZSTD_CFLAGS])
+AC_SUBST([LIBZSTD_LIBS])
+AC_SUBST([LIBARCHIVE_CFLAGS])
+AC_SUBST([LIBARCHIVE_LIBS])
 AC_SUBST([OPENSSL_CFLAGS])
 AC_SUBST([OPENSSL_LIBS])
 AC_SUBST([CURL_CFLAGS])
 AC_SUBST([CURL_LIBS])
-AC_SUBST([LIBARCHIVE_CFLAGS])
-AC_SUBST([LIBARCHIVE_LIBS])
-AC_SUBST([LIBLZMA_CFLAGS])
-AC_SUBST([LIBLZMA_LIBS])
 
 # AC_MSG_NOTICE([Stripping libs])
 # sh -c "find $deps_prefix/ -name '*.a' -execdir $STRIP '{''}' '+'"

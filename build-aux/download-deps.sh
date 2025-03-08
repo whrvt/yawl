@@ -7,9 +7,10 @@ LIBUNISTRING_VERSION="1.3"
 LIBIDN2_VERSION="2.3.7"
 PSL_VERSION="0.21.5"
 LIBZ_VERSION="2.2.4"
+XZ_VERSION="5.6.4"
+ZSTD_VERSION="1.5.7"
 OPENSSL_VERSION="3.2.1"
 CURL_VERSION="8.12.1"
-XZ_VERSION="5.6.4"
 LIBARCHIVE_VERSION="3.7.7"
 
 # Parse arguments
@@ -143,6 +144,106 @@ case "$LIB" in
         make install
         ;;
 
+    xz)
+        if [ ! -d "xz-$XZ_VERSION" ]; then
+            echo "Downloading xz-$XZ_VERSION..."
+            download_file "https://github.com/tukaani-project/xz/releases/download/v$XZ_VERSION/xz-$XZ_VERSION.tar.gz" "xz.tar.gz"
+            tar -xzf xz.tar.gz
+            rm xz.tar.gz
+        fi
+
+        cd "xz-$XZ_VERSION"
+
+        # Configure xz with minimal features
+        # We only need the liblzma library for libarchive
+        ./configure \
+            --prefix="$PREFIX" \
+            --disable-shared \
+            --enable-static \
+            --disable-dependency-tracking \
+            --disable-xz \
+            --disable-xzdec \
+            --disable-lzmadec \
+            --disable-lzmainfo \
+            --disable-scripts \
+            --disable-doc \
+            CC="$CC" \
+            CXX="$CXX" \
+            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+            CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS" \
+            LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
+
+        make -j"$JOBS"
+        make install
+        ;;
+
+    zstd)
+        if [ ! -d "zstd-$ZSTD_VERSION" ]; then
+            echo "Downloading zstd-$ZSTD_VERSION..."
+            download_file "https://github.com/facebook/zstd/releases/download/v$ZSTD_VERSION/zstd-$ZSTD_VERSION.tar.gz" "zstd.tar.gz"
+            tar -xzf zstd.tar.gz
+            rm zstd.tar.gz
+        fi
+
+        cd "zstd-$ZSTD_VERSION/lib"
+
+        FLAGS_ZST=("env"
+            "CC=$CC -v" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include -DZSTD_MULTITHREAD"
+            "CFLAGS=-pthread $CFLAGS -Wl,-pthread $LDFLAGS -L$PREFIX/lib -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+            "CXXFLAGS=$CFLAGS" "LDFLAGS=-pthread $LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
+            "AR=$AR l \"$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS\""
+        )
+
+        "${FLAGS_ZST[@]}" make libzstd.a && "${FLAGS_ZST[@]}" make libzstd.pc && \
+        install -Dm644 "libzstd.pc" "$PREFIX/lib/pkgconfig/libzstd.pc" && \
+        cd .. && \
+        install -Dm644 "lib/libzstd.a" "$PREFIX/lib/libzstd.a" && \
+        install -Dm644 "lib/zstd.h" "$PREFIX/include/zstd.h" && \
+        install -Dm644 "lib/zdict.h" "$PREFIX/include/zdict.h" && \
+        install -Dm644 "lib/zstd_errors.h" "$PREFIX/include/zstd_errors.h"
+        ;;
+
+    libarchive)
+        if [ ! -d "libarchive-$LIBARCHIVE_VERSION" ]; then
+            echo "Downloading libarchive-$LIBARCHIVE_VERSION..."
+            download_file "https://github.com/libarchive/libarchive/releases/download/v$LIBARCHIVE_VERSION/libarchive-$LIBARCHIVE_VERSION.tar.gz" "libarchive.tar.gz"
+            tar -xzf libarchive.tar.gz
+            rm libarchive.tar.gz
+        fi
+
+        cd "libarchive-$LIBARCHIVE_VERSION"
+
+        # Configure libarchive with minimal features
+        # We need tar and xz support for extracting the Steam Runtime
+        ./configure \
+            --prefix="$PREFIX" \
+            --enable-bsdtar=static \
+            --disable-shared \
+            --enable-static \
+            --disable-dependency-tracking \
+            --without-bz2lib \
+            --without-libb2 \
+            --without-iconv \
+            --without-lz4 \
+            --with-zstd \
+            --disable-acl \
+            --disable-xattr \
+            --without-xml2 \
+            --without-expat \
+            --with-lzma="$PREFIX" \
+            --with-zlib="$PREFIX" \
+            CC="$CC" \
+            CXX="$CXX" \
+            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+            CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS" \
+            LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
+
+        make -j"$JOBS"
+        make install
+        ;;
+
     openssl)
         if [ ! -d "openssl-$OPENSSL_VERSION" ]; then
             echo "Downloading openssl-$OPENSSL_VERSION..."
@@ -158,6 +259,7 @@ case "$LIB" in
         # Disable unnecessary engines, ciphers, and protocols
         CC="$CC" \
         CXX="$CXX" \
+        CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
         CFLAGS="$CFLAGS" \
         CXXFLAGS="$CXXFLAGS" \
         LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS" \
@@ -223,7 +325,7 @@ case "$LIB" in
             --disable-sspi \
             --without-librtmp \
             --disable-dependency-tracking \
-            --without-zstd \
+            --with-zstd \
             --without-brotli \
             --with-libidn2 \
             --without-libssh2 \
@@ -256,79 +358,6 @@ case "$LIB" in
             CXXFLAGS="$CXXFLAGS" \
             LIBS="-l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a $PTHREAD_EXTLIBS" \
             LDFLAGS="$LDFLAGS -L$PREFIX/lib"
-
-        make -j"$JOBS"
-        make install
-        ;;
-
-    xz)
-        if [ ! -d "xz-$XZ_VERSION" ]; then
-            echo "Downloading xz-$XZ_VERSION..."
-            download_file "https://tukaani.org/xz/xz-$XZ_VERSION.tar.gz" "xz.tar.gz"
-            tar -xzf xz.tar.gz
-            rm xz.tar.gz
-        fi
-
-        cd "xz-$XZ_VERSION"
-
-        # Configure xz with minimal features
-        # We only need the liblzma library for libarchive
-        ./configure \
-            --prefix="$PREFIX" \
-            --disable-shared \
-            --enable-static \
-            --disable-dependency-tracking \
-            --disable-xz \
-            --disable-xzdec \
-            --disable-lzmadec \
-            --disable-lzmainfo \
-            --disable-scripts \
-            --disable-doc \
-            CC="$CC" \
-            CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
-            CFLAGS="$CFLAGS" \
-            CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
-
-        make -j"$JOBS"
-        make install
-        ;;
-
-    libarchive)
-        if [ ! -d "libarchive-$LIBARCHIVE_VERSION" ]; then
-            echo "Downloading libarchive-$LIBARCHIVE_VERSION..."
-            download_file "https://github.com/libarchive/libarchive/releases/download/v$LIBARCHIVE_VERSION/libarchive-$LIBARCHIVE_VERSION.tar.gz" "libarchive.tar.gz"
-            tar -xzf libarchive.tar.gz
-            rm libarchive.tar.gz
-        fi
-
-        cd "libarchive-$LIBARCHIVE_VERSION"
-
-        # Configure libarchive with minimal features
-        # We need tar and xz support for extracting the Steam Runtime
-        ./configure \
-            --prefix="$PREFIX" \
-            --disable-shared \
-            --enable-static \
-            --disable-dependency-tracking \
-            --without-bz2lib \
-            --without-libb2 \
-            --without-iconv \
-            --without-lz4 \
-            --without-zstd \
-            --disable-acl \
-            --disable-xattr \
-            --without-xml2 \
-            --without-expat \
-            --with-lzma="$PREFIX" \
-            --with-zlib="$PREFIX" \
-            CC="$CC" \
-            CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
-            CFLAGS="$CFLAGS" \
-            CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
 
         make -j"$JOBS"
         make install
