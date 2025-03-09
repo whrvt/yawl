@@ -209,13 +209,12 @@ setup_done:
 }
 
 static char *build_library_paths(const char *wine_path) {
-    const char *system_paths[] = {"/lib", "/lib64", "/usr/lib", "/usr/lib64", NULL};
+    const char *system_paths[] = {"/lib", "/lib32", "/lib64", "/usr/lib", "/usr/lib32", "/usr/lib64", NULL};
+    char *wine_lib64_path = join_path(wine_path, "/lib64");
+    char *wine_lib32_path = join_path(wine_path, "/lib32");
+    char *wine_lib_path = join_path(wine_path, "/lib");
 
-    char *lib64_path, *lib_path;
-    asprintf(&lib64_path, "%s/lib64", wine_path);
-    asprintf(&lib_path, "%s/lib", wine_path);
-
-    size_t total_len = strlen(lib64_path) + strlen(lib_path) + 2;
+    size_t total_len = strlen(wine_lib64_path) + strlen(wine_lib32_path) + strlen(wine_lib_path) + 3;
     for (const char **path = system_paths; *path; path++) {
         if (access(*path, F_OK) == 0)
             total_len += strlen(*path) + 1; /* +1 for : */
@@ -226,7 +225,7 @@ static char *build_library_paths(const char *wine_path) {
         total_len += strlen(orig_path) + 1;
 
     char *result = malloc(total_len);
-    snprintf(result, total_len, "%s:%s", lib64_path, lib_path);
+    snprintf(result, total_len, "%s:%s:%s", wine_lib64_path, wine_lib32_path, wine_lib_path);
 
     for (const char **path = system_paths; *path; path++) {
         if (access(*path, F_OK) == 0) {
@@ -242,15 +241,16 @@ static char *build_library_paths(const char *wine_path) {
         free(temp);
     }
 
-    free(lib64_path);
-    free(lib_path);
+    free(wine_lib64_path);
+    free(wine_lib32_path);
+    free(wine_lib_path);
     return result;
 }
 
 /* required for ancient Debian/Ubuntu */
 static char *build_mesa_paths(void) {
     const char *mesa_paths[] = {"/usr/lib/i386-linux-gnu/dri", "/usr/lib/x86_64-linux-gnu/dri",
-                                "/usr/lib/dri", "/usr/lib64/dri", NULL};
+                                "/usr/lib/dri", "/usr/lib32/dri", "/usr/lib64/dri", NULL};
 
     size_t total_len = 1;
     for (const char **path = mesa_paths; *path; path++) {
