@@ -44,7 +44,7 @@
     "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION                                \
     "/snapshots/latest-container-runtime-public-beta"
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
-#define RUNTIME_ARCHIVE RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
+#define RUNTIME_ARCHIVE_NAME RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
 #define BUFFER_SIZE 8192
 
 static char *g_top_data_dir;
@@ -185,18 +185,15 @@ static int extract_archive(const char *archive_path, const char *extract_path) {
 
 static int setup_runtime(void) {
     int ret = 0;
-    char *archive_path = join_path(g_yawl_dir, RUNTIME_ARCHIVE);
+    char *archive_path = join_path(g_yawl_dir, RUNTIME_ARCHIVE_NAME);
     char *runtime_path = join_path(g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
 
     struct stat st;
     if (stat(runtime_path, &st) == 0 && S_ISDIR(st.st_mode))
         goto setup_done;
 
-    char runtime_url[512];
-    snprintf(runtime_url, sizeof(runtime_url), "%s/%s", RUNTIME_BASE_URL, RUNTIME_ARCHIVE);
     printf("Downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
-
-    if ((ret = download_file(runtime_url, archive_path)) != 0)
+    if ((ret = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path)) != 0)
         goto setup_done;
 
     printf("Extracting runtime...\n");
