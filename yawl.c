@@ -298,13 +298,6 @@ static char *find_wine_binary(const char *wine_path) {
     return result;
 }
 
-/* This is entirely unnecessary. */
-static int exit_cleanup(void) {
-    free(g_top_data_dir);
-    free(g_yawl_dir);
-    return 1;
-}
-
 int main(int argc, char *argv[]) {
     if (geteuid() == 0) {
         fprintf(stderr, "Error: This program should not be run as root. Exiting.\n");
@@ -313,18 +306,18 @@ int main(int argc, char *argv[]) {
 
     if (setup_data_dir() != 0) {
         fprintf(stderr, "Error: Failed to get a path to a usable data directory. Exiting.\n");
-        return exit_cleanup();
+        return 1;
     }
 
     g_yawl_dir = join_path(g_top_data_dir, PROG_NAME "/");
     if (ensure_dir(g_yawl_dir) != 0) {
         fprintf(stderr, "Error: The program directory (%s) is unusable. Exiting.\n", g_yawl_dir);
-        return exit_cleanup();
+        return 1;
     }
 
     if (setup_runtime() != 0) {
         fprintf(stderr, "Error: Failed setting up the runtime. Exiting.\n");
-        return exit_cleanup();
+        return 1;
     }
 
     const char *wine_path = getenv("WINE_PATH");
@@ -334,7 +327,7 @@ int main(int argc, char *argv[]) {
     char *wine_bin = find_wine_binary(wine_path);
     if (!wine_bin) {
         fprintf(stderr, "Error: No wine binary found in %s/bin. Exiting.\n", wine_path);
-        return exit_cleanup();
+        return 1;
     }
 
     char *entry_point = join_path(g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
@@ -342,7 +335,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error: Runtime entry point not found: %s\n", entry_point);
         free(entry_point);
         free(wine_bin);
-        return exit_cleanup();
+        return 1;
     }
 
     char **new_argv = calloc(argc + 4, sizeof(char *));
