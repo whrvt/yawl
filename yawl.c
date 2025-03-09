@@ -56,22 +56,23 @@ static char *join_path(const char *a, const char *b) {
     return result;
 }
 
-static int setup_data_dir(void) {
+static char *setup_data_dir(void) {
+    char *result;
     const char *temp_dir = getenv("XDG_DATA_HOME");
     if (!temp_dir) {
         if (!(temp_dir = getenv("HOME"))) {
             struct passwd *pw = getpwuid(getuid());
             if (!(pw && (temp_dir = pw->pw_dir)))
-                return -1;
+                return NULL;
         }
-        g_top_data_dir = join_path(temp_dir, ".local/share/");
+        result = join_path(temp_dir, ".local/share/");
     } else
-        g_top_data_dir = strdup(temp_dir);
+        result = strdup(temp_dir);
 
-    if (access(g_top_data_dir, X_OK) != 0)
-        return -1;
+    if (access(result, X_OK) != 0)
+        return NULL;
 
-    return 0;
+    return result;
 }
 
 static int ensure_dir(const char *path) {
@@ -304,7 +305,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (setup_data_dir() != 0) {
+    g_top_data_dir = setup_data_dir();
+    if (!g_top_data_dir) {
         fprintf(stderr, "Error: Failed to get a path to a usable data directory. Exiting.\n");
         return 1;
     }
