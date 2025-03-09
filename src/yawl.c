@@ -100,8 +100,7 @@ static int download_file(const char *url, const char *output_path) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
 
-    /* Copied from curl's `src/tool_operate.c`, use the embedded CA certificate
-     * data */
+    /* Copied from curl's `src/tool_operate.c`, use the embedded CA certificate data */
     struct curl_blob blob;
     blob.data = (void *)curl_ca_embed;
     blob.len = strlen((const char *)curl_ca_embed);
@@ -134,6 +133,7 @@ static int extract_archive(const char *archive_path, const char *extract_path) {
     archive_read_support_filter_xz(a);
     archive_read_support_filter_zstd(a);
     archive_read_support_filter_lzip(a);
+    archive_read_support_filter_gzip(a);
 
     ext = archive_write_disk_new();
     archive_write_disk_set_options(ext, flags);

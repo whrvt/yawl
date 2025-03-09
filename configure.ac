@@ -169,16 +169,16 @@ if ! test -f "$deps_prefix/lib/libzstd.a"; then
     sh build-aux/download-deps.sh zstd "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build zstd])
 fi
 
-# Download and build libarchive
-if ! test -f "$deps_prefix/lib/libarchive.a"; then
-    AC_MSG_NOTICE([Building libarchive])
-    sh build-aux/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
-fi
-
 # Download and build openssl
 if ! test -f "$deps_prefix/lib/libssl.a" || ! test -f "$deps_prefix/lib/libcrypto.a"; then
     AC_MSG_NOTICE([Building openssl])
     sh build-aux/download-deps.sh openssl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build openssl])
+fi
+
+# Download and build libarchive
+if ! test -f "$deps_prefix/lib/libarchive.a"; then
+    AC_MSG_NOTICE([Building libarchive])
+    sh build-aux/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
 fi
 
 # Download and build curl

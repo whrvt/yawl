@@ -205,46 +205,6 @@ case "$LIB" in
         install -Dm644 "lib/zstd_errors.h" "$PREFIX/include/zstd_errors.h"
         ;;
 
-    libarchive)
-        if [ ! -d "libarchive-$LIBARCHIVE_VERSION" ]; then
-            echo "Downloading libarchive-$LIBARCHIVE_VERSION..."
-            download_file "https://github.com/libarchive/libarchive/releases/download/v$LIBARCHIVE_VERSION/libarchive-$LIBARCHIVE_VERSION.tar.gz" "libarchive.tar.gz"
-            tar -xzf libarchive.tar.gz
-            rm libarchive.tar.gz
-        fi
-
-        cd "libarchive-$LIBARCHIVE_VERSION"
-
-        # Configure libarchive with minimal features
-        # We need tar and xz support for extracting the Steam Runtime
-        ./configure \
-            --prefix="$PREFIX" \
-            --enable-bsdtar=static \
-            --disable-shared \
-            --enable-static \
-            --disable-dependency-tracking \
-            --without-bz2lib \
-            --without-libb2 \
-            --without-iconv \
-            --without-lz4 \
-            --with-zstd \
-            --disable-acl \
-            --disable-xattr \
-            --without-xml2 \
-            --without-expat \
-            --with-lzma="$PREFIX" \
-            --with-zlib="$PREFIX" \
-            CC="$CC" \
-            CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS" \
-            CFLAGS="$CFLAGS" \
-            CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
-
-        make -j"$JOBS"
-        make install
-        ;;
-
     openssl)
         if [ ! -d "openssl-$OPENSSL_VERSION" ]; then
             echo "Downloading openssl-$OPENSSL_VERSION..."
@@ -252,6 +212,9 @@ case "$LIB" in
             tar -xzf openssl.tar.gz
             rm openssl.tar.gz
         fi
+
+        rm -rf "${PREFIX:?}/lib64"
+        ln -sf "$PREFIX/lib" "$PREFIX/lib64"
 
         cd "openssl-$OPENSSL_VERSION"
 
@@ -304,9 +267,47 @@ case "$LIB" in
         # OpenSSL's build system has an install_sw target to install only the
         # libraries and not the documentation or other components
         make install_sw
-        cp -r --update "$PREFIX/lib64/"* "$PREFIX/lib/"
-        rm -rf "${PREFIX:?}/lib64"
-        ln -sf "$PREFIX/lib" "$PREFIX/lib64"
+        ;;
+
+    libarchive)
+        if [ ! -d "libarchive-$LIBARCHIVE_VERSION" ]; then
+            echo "Downloading libarchive-$LIBARCHIVE_VERSION..."
+            download_file "https://github.com/libarchive/libarchive/releases/download/v$LIBARCHIVE_VERSION/libarchive-$LIBARCHIVE_VERSION.tar.gz" "libarchive.tar.gz"
+            tar -xzf libarchive.tar.gz
+            rm libarchive.tar.gz
+        fi
+
+        cd "libarchive-$LIBARCHIVE_VERSION"
+
+        # Configure libarchive with minimal features
+        # We need tar and xz support for extracting the Steam Runtime
+        ./configure \
+            --prefix="$PREFIX" \
+            --enable-bsdtar=static \
+            --disable-shared \
+            --enable-static \
+            --disable-dependency-tracking \
+            --without-bz2lib \
+            --without-libb2 \
+            --without-iconv \
+            --without-lz4 \
+            --with-zstd \
+            --disable-acl \
+            --disable-xattr \
+            --without-xml2 \
+            --without-expat \
+            --with-openssl \
+            --with-lzma="$PREFIX" \
+            --with-zlib="$PREFIX" \
+            CC="$CC" \
+            CXX="$CXX" \
+            CPPFLAGS="$CPPFLAGS" \
+            CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS" \
+            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
+
+        make -j"$JOBS"
+        make install
         ;;
 
     curl)
