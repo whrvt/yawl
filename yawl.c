@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -365,6 +366,9 @@ int main(int argc, char *argv[]) {
         setenv("LIBGL_DRIVERS_PATH", mesa_paths, 1);
         free(mesa_paths);
     }
+
+    if (prctl(PR_SET_CHILD_SUBREAPER, 1UL, 0UL, 0UL, 0UL) == -1)
+        fprintf(stderr, "Warning: Failed to set child subreaper status, errno: %d\n", errno);
 
     execv(entry_point, new_argv);
     perror("Failed to execute runtime"); /* Shouldn't reach here. */
