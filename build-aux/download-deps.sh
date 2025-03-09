@@ -189,7 +189,7 @@ case "$LIB" in
         cd "zstd-$ZSTD_VERSION/lib"
 
         FLAGS_ZST=("env"
-            "CC=$CC -v" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include -DZSTD_MULTITHREAD"
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include -DZSTD_MULTITHREAD"
             "CFLAGS=-pthread $CFLAGS -Wl,-pthread $LDFLAGS -L$PREFIX/lib -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
             "CXXFLAGS=$CFLAGS" "LDFLAGS=-pthread $LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
             "AR=$AR l \"$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS\""
@@ -338,7 +338,7 @@ case "$LIB" in
             --without-ca-fallback \
             --disable-manual \
             --disable-libcurl-option \
-            --disable-verbose \
+            --enable-verbose \
             --disable-ftp \
             --disable-file \
             --disable-ldap \
@@ -365,6 +365,11 @@ case "$LIB" in
 
         make -j"$JOBS"
         make install
+
+        # Copy the auto-generated ca certificate data to a header we can use for yawl 
+        # (contains the `const unsigned char curl_ca_embed[]` blob of data)
+        echo "#pragma once" > "$PREFIX/include/curl/ca_cert_embed.h"
+        cat "src/tool_ca_embed.c" >> "$PREFIX/include/curl/ca_cert_embed.h"
         ;;
 
     *)

@@ -27,6 +27,11 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <curl/curl.h>
+
+/* This file does not normally exist, but it contains embedded CA certificate data generated 
+   as part of the curl build process, and we move it here to be able to use it for CURLOPT_CAINFO_BLOB */
+#include <curl/ca_cert_embed.h>
+
 #include <archive.h>
 #include <pwd.h>
 
@@ -65,7 +70,7 @@ static int ensure_dir( const char *path )
     return mkdir( path, 0755 );
 }
 
-static int download_file( const char *url, const char *output_path )
+static CURLcode download_file( const char *url, const char *output_path )
 {
     CURL *curl = curl_easy_init();
     if (!curl)
@@ -88,12 +93,19 @@ static int download_file( const char *url, const char *output_path )
     curl_easy_setopt( curl, CURLOPT_FOLLOWLOCATION, 1L );
     curl_easy_setopt( curl, CURLOPT_SSL_VERIFYPEER, 1L );
 
+    /* Copied from curl's `src/tool_operate.c`, use the embedded CA certificate data */
+    struct curl_blob blob;
+    blob.data = (void *)curl_ca_embed;
+    blob.len = strlen( (const char *)curl_ca_embed );
+    blob.flags = CURL_BLOB_NOCOPY;
+    curl_easy_setopt( curl, CURLOPT_CAINFO_BLOB, &blob );
+
     CURLcode res = curl_easy_perform( curl );
 
     fclose( fp );
     curl_easy_cleanup( curl );
 
-    return ( res == CURLE_OK ) ? 0 : -1;
+    return res;
 }
 
 static int extract_archive( const char *archive_path, const char *extract_path )
@@ -183,11 +195,13 @@ static int setup_runtime(void)
 
     char runtime_url[512];
     snprintf( runtime_url, sizeof( runtime_url ), "%s/%s", RUNTIME_BASE_URL, RUNTIME_ARCHIVE );
-
     fprintf( stderr, "Downloading Steam Runtime (%s)...\n", RUNTIME_VERSION );
-    if (download_file( runtime_url, archive_path ) != 0)
+
+    CURLcode res;
+    if ((res = download_file( runtime_url, archive_path )) != CURLE_OK)
     {
-        fprintf( stderr, "Failed to download runtime\n" );
+        fprintf( stderr, "Failed to download runtime: %s\n",
+                 curl_easy_strerror( res ) );
         return -1;
     }
 
