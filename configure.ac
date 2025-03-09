@@ -40,8 +40,6 @@ deps_builddir="$PWD/deps/build"
 deps_prefix="$PWD/deps/prefix"
 mkdir -p "$deps_builddir" "$deps_prefix"
 
-CLANGVER="$($CC --version | head -n 1 | cut -f3 -d' ' | cut -f1 -d'.')"
-
 musl_is_dumb="$deps_builddir/musl_temp"
 mkdir -p "$musl_is_dumb"
 
@@ -56,6 +54,8 @@ AS_IF([test -L "$musl_is_dumb/linux"],
     [unlink "$musl_is_dumb/linux"]
 )
 $LN_S "$MUSL_INCDIR" "$musl_is_dumb/linux"
+
+CLANGVER="$($CC --version | head -n 1 | cut -f3 -d' ' | cut -f1 -d'.')"
 
 AS_IF([test -n "$CLANG_INCDIR"], [],
     [CLANG_INCDIR="/usr/lib/clang/$CLANGVER/include"]
@@ -189,7 +189,7 @@ fi
 
 # The flags are taken from the generated .pc (pkg-config) files, slightly modified.
 # Hardcoding them here to avoid needing to ship .pc files.
-CURL_CFLAGS="-I$deps_prefix/include -DCURL_STATICLIB -DWITH_GZFILEOP -DCURL_STATICLIB"
+CURL_CFLAGS="-I$deps_prefix/include -DCURL_STATICLIB -DWITH_GZFILEOP"
 CURL_LIBS="-L$deps_prefix/lib -lcurl -lidn2 -lunistring -lpsl -lssl -lcrypto -lzstd -lz -l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a -Wl,--whole-archive -lpthread -Wl,--no-whole-archive -lunistring -lpthread -lzstd -l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a -Wl,--whole-archive -lpthread -Wl,--no-whole-archive -lidn2 -lunistring -lpthread -lz -lzstd -pthread -lssl -lcrypto -ldl -pthread -lpsl"
 LIBARCHIVE_CFLAGS="-I$deps_prefix/include -DLIBARCHIVE_STATIC"
 LIBARCHIVE_LIBS="-L$deps_prefix/lib -larchive -llzma -lzstd -lz -lcrypto"
