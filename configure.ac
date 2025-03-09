@@ -83,6 +83,16 @@ AC_SUBST([PKG_CONFIG_PATH])
 export PKG_CONFIG_LIBDIR="$deps_prefix/lib:$PKG_CONFIG_LIBDIR"
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
+AS_IF([test -n "$CERT_BUNDLE"], [],
+    [CERT_BUNDLE="/etc/ssl/certs/ca-bundle.crt"]
+)
+export CERT_BUNDLE
+AC_SUBST([CERT_BUNDLE])
+
+AC_CHECK_FILE([$CERT_BUNDLE], [],
+    [AC_MSG_ERROR([Could not find an ssl certificate bundle (set CERT_BUNDLE to specify a ca-bundle.crt manually)])
+])
+
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$deps_prefix/lib/libunistring.a"; then
     AC_MSG_NOTICE([Building libunistring])

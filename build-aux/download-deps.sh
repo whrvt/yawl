@@ -332,6 +332,10 @@ case "$LIB" in
             --without-nghttp2 \
             --without-nghttp3 \
             --without-ngtcp2 \
+            --with-ca-embed="$CERT_BUNDLE" \
+            --without-ca-path \
+            --without-ca-bundle \
+            --without-ca-fallback \
             --disable-manual \
             --disable-libcurl-option \
             --disable-verbose \
