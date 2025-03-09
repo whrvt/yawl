@@ -8,6 +8,9 @@ AC_PREFIX_DEFAULT([dist]) # default `make install`s to ./dist/bin/ (modify with 
 
 # Checks for programs
 AC_PROG_CC([musl-clang])
+if test -z "$CC"; then
+    AC_MSG_ERROR([musl-clang not found])
+fi
 AC_PROG_CXX([musl-clang])
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
@@ -42,12 +45,30 @@ CLANGVER="$($CC --version | head -n 1 | cut -f3 -d' ' | cut -f1 -d'.')"
 musl_is_dumb="$deps_builddir/musl_temp"
 mkdir -p "$musl_is_dumb"
 
-$LN_S "/usr/lib/musl/include/sys" "$musl_is_dumb/linux"
+AS_IF([test -n "$MUSL_INCDIR"], [],
+    [MUSL_INCDIR="/usr/lib/musl/include/sys"]
+)
+AC_SUBST([MUSL_INCDIR])
+AC_CHECK_FILE([$MUSL_INCDIR], [],
+    [AC_MSG_ERROR([Could not find the musl header files (set MUSL_INCDIR to specify a musl/include folder manually)])
+])
+AS_IF([test -L "$musl_is_dumb/linux"],
+    [unlink "$musl_is_dumb/linux"]
+)
+$LN_S "$MUSL_INCDIR" "$musl_is_dumb/linux"
+
+AS_IF([test -n "$CLANG_INCDIR"], [],
+    [CLANG_INCDIR="/usr/lib/clang/$CLANGVER/include"]
+)
+AC_SUBST([CLANG_INCDIR])
+AC_CHECK_FILE([$CLANG_INCDIR], [],
+    [AC_MSG_ERROR([Could not find the clang header files (set CLANG_INCDIR to specify a clang/<version>/include folder manually)])
+])
 
 # Always enforce static linking, and make small binaries
 export CC="$CC --target=x86_64-linux-musl"
 export CXX="$CXX --target=x86_64-linux-musl"
-shared_includes="-I$musl_is_dumb -I/usr/lib/clang/$CLANGVER/include -I$deps_prefix/include"
+shared_includes="-I$musl_is_dumb -I$CLANG_INCDIR -I$deps_prefix/include"
 shared_cflags="$shared_includes -Oz -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
                -Wno-unused-command-line-argument"
 export CPPFLAGS="$CPPFLAGS -D__STDC_NO_ATOMICS__ $shared_includes"
@@ -94,18 +115,23 @@ AC_SUBST([PKG_CONFIG_PATH])
 export PKG_CONFIG_LIBDIR="$deps_prefix/lib:$PKG_CONFIG_LIBDIR"
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
+# Check for required headers
+AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h])
+
+if test "x$ac_cv_header_linux_mman_h" != "xyes"
+then
+    AC_MSG_ERROR([Could not find the linux/mman.h header (MUSL_INCDIR=$MUSL_INCDIR is likely missing)])
+fi
+
 AS_IF([test -n "$CERT_BUNDLE"], [],
     [CERT_BUNDLE="/etc/ssl/certs/ca-bundle.crt"]
 )
 export CERT_BUNDLE
 AC_SUBST([CERT_BUNDLE])
 
-# Check for required headers
-AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h])
-
 AC_CHECK_FILE([$CERT_BUNDLE], [],
-    [AC_MSG_ERROR([Could not find an ssl certificate bundle (set CERT_BUNDLE to specify a ca-bundle.crt manually)])
-])
+    [AC_MSG_ERROR([Could not find an ssl certificate bundle (set CERT_BUNDLE to specify a ca-bundle.crt manually)])]
+)
 
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$deps_prefix/lib/libunistring.a"; then
