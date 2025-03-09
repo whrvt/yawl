@@ -7,8 +7,9 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_PREFIX_DEFAULT([dist]) # default `make install`s to ./dist/bin/ (modify with --prefix=)
 
 # Checks for programs
-AC_PROG_CC([clang])
-AC_PROG_CXX([clang++])
+AC_PROG_CC([musl-clang])
+AC_PROG_CXX([musl-clang])
+AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
 
@@ -31,13 +32,28 @@ AC_PROG_AR
 # Check pkg-config
 PKG_PROG_PKG_CONFIG
 
+# Set up build directories
+deps_builddir="$PWD/deps/build"
+deps_prefix="$PWD/deps/prefix"
+mkdir -p "$deps_builddir" "$deps_prefix"
+
+CLANGVER="$($CC --version | head -n 1 | cut -f3 -d' ' | cut -f1 -d'.')"
+
+musl_is_dumb="$deps_builddir/musl_temp"
+mkdir -p "$musl_is_dumb"
+
+$LN_S "/usr/lib/musl/include/sys" "$musl_is_dumb/linux"
+
 # Always enforce static linking, and make small binaries
-export CC="clang"
-export CXX="clang++"
-shared_cflags="-Oz -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic"
-export CFLAGS="$CFLAGS $shared_cflags -std=gnu23"
-export CXXFLAGS="$CXXFLAGS $shared_cflags -std=gnu++23"
-export LDFLAGS="$LDFLAGS -fuse-ld=lld -static -static-libgcc -Wl,--gc-sections,-s"
+export CC="$CC --target=x86_64-linux-musl"
+export CXX="$CXX --target=x86_64-linux-musl"
+shared_includes="-I$musl_is_dumb -I/usr/lib/clang/$CLANGVER/include -I$deps_prefix/include"
+shared_cflags="$shared_includes -Oz -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
+               -Wno-unused-command-line-argument"
+export CPPFLAGS="$CPPFLAGS -D__STDC_NO_ATOMICS__ $shared_includes"
+export CFLAGS="$CFLAGS $shared_cflags -std=gnu17 -Wno-gnu-include-next"
+export CXXFLAGS="$CXXFLAGS $shared_cflags -std=gnu++17"
+export LDFLAGS="$LDFLAGS -L$deps_prefix/lib -static -Wl,--gc-sections,-s -fuse-ld=musl-clang"
 export STRIP="$STRIP"
 export AR="$AR"
 
@@ -45,12 +61,12 @@ export PTHREAD_EXTLIBS="-Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
 
 AC_SUBST([CC])
 AC_SUBST([CXX])
+AC_SUBST([CPPFLAGS])
 AC_SUBST([CFLAGS])
 AC_SUBST([CXXFLAGS])
 AC_SUBST([LDFLAGS])
 AC_SUBST([STRIP])
 AC_SUBST([AR])
-
 AC_SUBST([PTHREAD_EXTLIBS])
 
 # Get number of processors for parallel builds
@@ -67,11 +83,6 @@ AX_COUNT_CPUS
 # Set make flags for parallel build
 export MAKEFLAGS="-j$CPU_COUNT"
 AC_SUBST([MAKEFLAGS])
-
-# Set up build directories
-deps_builddir="$PWD/deps/build"
-deps_prefix="$PWD/deps/prefix"
-mkdir -p "$deps_builddir" "$deps_prefix"
 
 # Add build-aux to PATH for helper scripts
 export PATH="$PWD/build-aux:$PATH"
@@ -147,26 +158,26 @@ if ! test -f "$deps_prefix/lib/libcurl.a"; then
     sh build-aux/download-deps.sh curl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build curl])
 fi
 
-# Set up flags to use our built libraries
-
-export LIBUNISTRING_CFLAGS="-I$deps_prefix/include"
-export LIBUNISTRING_LIBS="$deps_prefix/lib/libunistring.a"
-export LIBPSL_CFLAGS="-I$deps_prefix/include"
-export LIBPSL_LIBS="$deps_prefix/lib/libpsl.a"
-export LIBIDN2_CFLAGS="-I$deps_prefix/include"
-export LIBIDN2_LIBS="$deps_prefix/lib/libidn2.a"
-export LIBZ_CFLAGS="-I$deps_prefix/include"
-export LIBZ_LIBS="$deps_prefix/lib/libz.a"
-export LIBLZMA_CFLAGS="-I$deps_prefix/include"
-export LIBLZMA_LIBS="$deps_prefix/lib/liblzma.a"
-export LIBZSTD_CFLAGS="-I$deps_prefix/include"
-export LIBZSTD_LIBS="$deps_prefix/lib/libzstd.a"
-export LIBARCHIVE_CFLAGS="-I$deps_prefix/include"
-export LIBARCHIVE_LIBS="$deps_prefix/lib/libarchive.a"
-export OPENSSL_CFLAGS="-I$deps_prefix/include"
-export OPENSSL_LIBS="$deps_prefix/lib/libssl.a $deps_prefix/lib/libcrypto.a"
-export CURL_CFLAGS="-DCURL_STATICLIB -I$deps_prefix/include"
-export CURL_LIBS="$deps_prefix/lib/libcurl.a"
+# The flags are taken from the generated .pc (pkg-config) files, slightly modified.
+# Hardcoding them here to avoid needing to ship .pc files.
+CURL_CFLAGS="-I$deps_prefix/include -DCURL_STATICLIB -DWITH_GZFILEOP -DCURL_STATICLIB"
+CURL_LIBS="-L$deps_prefix/lib -lcurl -lidn2 -lunistring -lpsl -lssl -lcrypto -lzstd -lz -l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a -Wl,--whole-archive -lpthread -Wl,--no-whole-archive -lunistring -lpthread -lzstd -l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a -Wl,--whole-archive -lpthread -Wl,--no-whole-archive -lidn2 -lunistring -lpthread -lz -lzstd -pthread -lssl -lcrypto -ldl -pthread -lpsl"
+LIBARCHIVE_CFLAGS="-I$deps_prefix/include -DLIBARCHIVE_STATIC"
+LIBARCHIVE_LIBS="-L$deps_prefix/lib -larchive -llzma -lzstd -lz -lcrypto"
+LIBIDN2_CFLAGS="-I$deps_prefix/include"
+LIBIDN2_LIBS="-L$deps_prefix/lib -lidn2 -lunistring"
+LIBLZMA_CFLAGS="-I$deps_prefix/include -DLZMA_API_STATIC"
+LIBLZMA_LIBS="-L$deps_prefix/lib -llzma"
+LIBPSL_CFLAGS="-I$deps_prefix/include"
+LIBPSL_LIBS="-L$deps_prefix/lib -lpsl"
+LIBUNISTRING_CFLAGS="-I$deps_prefix/include"
+LIBUNISTRING_LIBS="-l:libunistring.a"
+LIBZSTD_CFLAGS="-I$deps_prefix/include"
+LIBZSTD_LIBS="-L$deps_prefix/lib -lzstd"
+LIBZ_CFLAGS="-I$deps_prefix/include -DWITH_GZFILEOP"
+LIBZ_LIBS="-L$deps_prefix/lib -lz"
+OPENSSL_CFLAGS="-I$deps_prefix/include"
+OPENSSL_LIBS="-L$deps_prefix/lib -lssl -lcrypto"
 
 AC_SUBST([LIBUNISTRING_CFLAGS])
 AC_SUBST([LIBUNISTRING_LIBS])
@@ -187,11 +198,29 @@ AC_SUBST([OPENSSL_LIBS])
 AC_SUBST([CURL_CFLAGS])
 AC_SUBST([CURL_LIBS])
 
-# AC_MSG_NOTICE([Stripping libs])
-# sh -c "find $deps_prefix/ -name '*.a' -execdir $STRIP '{''}' '+'"
+# Here for reference:
+
+# LIBUNISTRING_CFLAGS="-I$deps_prefix/include"
+# LIBUNISTRING_LIBS="-l:libunistring.a"
+# LIBPSL_CFLAGS="$($PKG_CONFIG --cflags libpsl)"
+# LIBPSL_LIBS="$($PKG_CONFIG --libs libpsl)"
+# LIBIDN2_CFLAGS="$($PKG_CONFIG --cflags libidn2)"
+# LIBIDN2_LIBS="$($PKG_CONFIG --libs libidn2)"
+# LIBZ_CFLAGS="$($PKG_CONFIG --cflags zlib)"
+# LIBZ_LIBS="$($PKG_CONFIG --libs zlib)"
+# LIBLZMA_CFLAGS="$($PKG_CONFIG --cflags liblzma)"
+# LIBLZMA_LIBS="$($PKG_CONFIG --libs liblzma)"
+# LIBZSTD_CFLAGS="$($PKG_CONFIG --cflags libzstd)"
+# LIBZSTD_LIBS="$($PKG_CONFIG --libs libzstd)"
+# LIBARCHIVE_CFLAGS="$($PKG_CONFIG --cflags libarchive)"
+# LIBARCHIVE_LIBS="$($PKG_CONFIG --libs libarchive)"
+# OPENSSL_CFLAGS="$($PKG_CONFIG --cflags openssl) $($PKG_CONFIG --cflags libcrypto)"
+# OPENSSL_LIBS="$($PKG_CONFIG --libs openssl) $($PKG_CONFIG --libs libcrypto)"
+# CURL_CFLAGS="$($PKG_CONFIG --cflags libcurl)"
+# CURL_LIBS="$($PKG_CONFIG --libs libcurl)"
 
 # Check for required headers
-AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h])
+AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h])
 
 # Generate Makefile
 AC_CONFIG_FILES([Makefile])

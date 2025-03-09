@@ -59,10 +59,10 @@ case "$LIB" in
             --enable-static \
             CC="$CC" \
             CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+            CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
 
         make -j"$JOBS"
         make install
@@ -86,10 +86,10 @@ case "$LIB" in
             --disable-nls \
             CC="$CC" \
             CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+            CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -L$PREFIX/lib -l:libunistring.a $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS -l:libunistring.a $PTHREAD_EXTLIBS"
 
         make -j"$JOBS"
         make install
@@ -111,10 +111,10 @@ case "$LIB" in
             --enable-static \
             CC="$CC" \
             CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+            CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -L$PREFIX/lib -l:libunistring.a -l:libidn2.a $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS -l:libunistring.a -l:libidn2.a $PTHREAD_EXTLIBS"
 
         make -j"$JOBS"
         make install
@@ -132,9 +132,10 @@ case "$LIB" in
 
         CC="$CC" \
         CXX="$CXX" \
+        CPPFLAGS="$CPPFLAGS" \
         CFLAGS="$CFLAGS" \
         CXXFLAGS="$CXXFLAGS" \
-        LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS" \
+        LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS" \
         ./configure \
             --prefix="$PREFIX" \
             --static \
@@ -169,10 +170,10 @@ case "$LIB" in
             --disable-doc \
             CC="$CC" \
             CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+            CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
 
         make -j"$JOBS"
         make install
@@ -189,10 +190,10 @@ case "$LIB" in
         cd "zstd-$ZSTD_VERSION/lib"
 
         FLAGS_ZST=("env"
-            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include -DZSTD_MULTITHREAD"
-            "CFLAGS=-pthread $CFLAGS -Wl,-pthread $LDFLAGS -L$PREFIX/lib -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
-            "CXXFLAGS=$CFLAGS" "LDFLAGS=-pthread $LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
-            "AR=$AR l \"$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS\""
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -DZSTD_MULTITHREAD"
+            "CFLAGS=-pthread $CFLAGS -Wl,-pthread $LDFLAGS -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+            "CXXFLAGS=$CFLAGS" "LDFLAGS=-pthread $LDFLAGS $PTHREAD_EXTLIBS"
+            "AR=$AR l \"$LDFLAGS $PTHREAD_EXTLIBS\""
         )
 
         "${FLAGS_ZST[@]}" make -j"$JOBS" libzstd.a && "${FLAGS_ZST[@]}" make -j"$JOBS" libzstd.pc && \
@@ -235,10 +236,10 @@ case "$LIB" in
             --with-zlib="$PREFIX" \
             CC="$CC" \
             CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+            CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
 
         make -j"$JOBS"
         make install
@@ -259,14 +260,16 @@ case "$LIB" in
         # Disable unnecessary engines, ciphers, and protocols
         CC="$CC" \
         CXX="$CXX" \
-        CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+        CPPFLAGS="$CPPFLAGS" \
         CFLAGS="$CFLAGS" \
         CXXFLAGS="$CXXFLAGS" \
-        LDFLAGS="$LDFLAGS -L$PREFIX/lib $PTHREAD_EXTLIBS" \
+        LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS" \
         ./config \
             --prefix="$PREFIX" \
             --openssldir="$PREFIX/ssl" \
             no-shared \
+            no-afalgeng \
+            no-quic \
             no-weak-ssl-ciphers \
             no-ssl3 \
             no-dtls \
@@ -297,12 +300,13 @@ case "$LIB" in
             enable-ec_nistp_64_gcc_128
 
         make -j"$JOBS"
+
         # OpenSSL's build system has an install_sw target to install only the
         # libraries and not the documentation or other components
         make install_sw
-        cp -r "$PREFIX/lib64/"* "$PREFIX/lib/"
+        cp -r --update "$PREFIX/lib64/"* "$PREFIX/lib/"
         rm -rf "${PREFIX:?}/lib64"
-        ln -s "$PREFIX/lib" "$PREFIX/lib64"
+        ln -sf "$PREFIX/lib" "$PREFIX/lib64"
         ;;
 
     curl)
@@ -356,12 +360,11 @@ case "$LIB" in
             --enable-http \
             --with-openssl \
             CC="$CC" \
-            CXX="$CXX" \
-            CPPFLAGS="$CPPFLAGS -I$PREFIX/include" \
+            CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
             LIBS="-l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a $PTHREAD_EXTLIBS" \
-            LDFLAGS="$LDFLAGS -L$PREFIX/lib"
+            LDFLAGS="$LDFLAGS"
 
         make -j"$JOBS"
         make install
