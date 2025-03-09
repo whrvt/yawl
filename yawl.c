@@ -86,16 +86,16 @@ static int ensure_dir(const char *path) {
     return mkdir(path, 0755);
 }
 
-static CURLcode download_file(const char *url, const char *output_path) {
+static int download_file(const char *url, const char *output_path) {
     CURL *curl = curl_easy_init();
     if (!curl) {
-        fprintf(stderr, "Debug: couldn't init curl, errno %d\n", errno);
+        fprintf(stderr, "curl error: %s\n", curl_easy_strerror(CURLE_FAILED_INIT));
         return -1;
     }
 
     FILE *fp = fopen(output_path, "wb");
     if (!fp) {
-        fprintf(stderr, "Debug: couldn't open output_path, errno %d\n", errno);
+        fprintf(stderr, "Error: Couldn't open output_path (%s), errno %d\n", output_path, errno);
         curl_easy_cleanup(curl);
         return -1;
     }
@@ -119,7 +119,12 @@ static CURLcode download_file(const char *url, const char *output_path) {
     fclose(fp);
     curl_easy_cleanup(curl);
 
-    return res;
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl error: %s\n", curl_easy_strerror(res));
+        return -1;
+    }
+
+    return 0;
 }
 
 static int extract_archive(const char *archive_path, const char *extract_path) {
@@ -141,14 +146,14 @@ static int extract_archive(const char *archive_path, const char *extract_path) {
     archive_write_disk_set_standard_lookup(ext);
 
     if ((r = archive_read_open_filename(a, archive_path, BUFFER_SIZE))) {
-        fprintf(stderr, "Debug: Extracting failed (read_open_filename), errno: %d, string: %s\n",
+        fprintf(stderr, "Error: Extracting failed (read_open_filename), errno: %d, string: %s\n",
                 archive_errno(a), archive_error_string(a));
         return -1;
     }
 
     char *old_cwd = getcwd(NULL, 0);
     if (chdir(extract_path) != 0) {
-        fprintf(stderr, "Debug: Extracting failed (chdir), errno: %d\n", errno);
+        fprintf(stderr, "Error: Extracting failed (chdir), errno: %d\n", errno);
         free(old_cwd);
         return -1;
     }
@@ -188,20 +193,13 @@ static int setup_runtime(void) {
 
     char runtime_url[512];
     snprintf(runtime_url, sizeof(runtime_url), "%s/%s", RUNTIME_BASE_URL, RUNTIME_ARCHIVE);
-    fprintf(stderr, "Downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
+    printf("Downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
 
-    CURLcode res;
-    if ((res = download_file(runtime_url, archive_path)) != CURLE_OK) {
-        ret = -1;
-        fprintf(stderr, "Failed to download runtime: %s\n", curl_easy_strerror(res));
+    if ((ret = download_file(runtime_url, archive_path)) != 0)
         goto setup_done;
-    }
 
-    fprintf(stderr, "Extracting runtime...\n");
-    if (extract_archive(archive_path, g_yawl_dir) != 0) {
-        ret = -1;
-        fprintf(stderr, "Failed to extract runtime\n");
-    }
+    printf("Extracting runtime...\n");
+    ret = extract_archive(archive_path, g_yawl_dir);
 
     unlink(archive_path);
 
