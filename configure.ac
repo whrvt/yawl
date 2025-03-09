@@ -100,6 +100,9 @@ AS_IF([test -n "$CERT_BUNDLE"], [],
 export CERT_BUNDLE
 AC_SUBST([CERT_BUNDLE])
 
+# Check for required headers
+AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h])
+
 AC_CHECK_FILE([$CERT_BUNDLE], [],
     [AC_MSG_ERROR([Could not find an ssl certificate bundle (set CERT_BUNDLE to specify a ca-bundle.crt manually)])
 ])
@@ -218,9 +221,6 @@ AC_SUBST([CURL_LIBS])
 # OPENSSL_LIBS="$($PKG_CONFIG --libs openssl) $($PKG_CONFIG --libs libcrypto)"
 # CURL_CFLAGS="$($PKG_CONFIG --cflags libcurl)"
 # CURL_LIBS="$($PKG_CONFIG --libs libcurl)"
-
-# Check for required headers
-AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h])
 
 # Generate Makefile
 AC_CONFIG_FILES([Makefile])
