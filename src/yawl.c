@@ -32,17 +32,17 @@
 /* This file does not normally exist, but it contains embedded CA certificate
    data generated as part of the curl build process, and we move it here to be
    able to use it for CURLOPT_CAINFO_BLOB */
-#include "curl/ca_cert_embed.h"
-
 #include "archive.h"
+#include "curl/ca_cert_embed.h"
 #include "curl/curl.h"
+
+#include "strings.h"
 
 #define PROG_NAME "yawl"
 
 #define RUNTIME_VERSION "sniper"
-#define RUNTIME_BASE_URL                                                                           \
-    "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION                                \
-    "/snapshots/latest-container-runtime-public-beta"
+#define RUNTIME_BASE_URL                                                                                               \
+    "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION "/snapshots/latest-container-runtime-public-beta"
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
 #define RUNTIME_ARCHIVE_NAME RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
 #define BUFFER_SIZE 8192
@@ -50,15 +50,8 @@
 static char *g_top_data_dir;
 static char *g_yawl_dir;
 
-/* Allocates a new path separated by `/` */
-static char *join_path(const char *a, const char *b) {
-    char *result;
-    asprintf(&result, "%s/%s", a, b);
-    return result;
-}
-
 static char *setup_data_dir(void) {
-    char *result;
+    char *result = NULL;
     const char *temp_dir = getenv("XDG_DATA_HOME");
     if (!temp_dir) {
         if (!(temp_dir = getenv("HOME"))) {
@@ -66,7 +59,7 @@ static char *setup_data_dir(void) {
             if (!(pw && (temp_dir = pw->pw_dir)))
                 return NULL;
         }
-        result = join_path(temp_dir, ".local/share/");
+        join_paths(result, temp_dir, ".local", "share");
     } else
         result = strdup(temp_dir);
 
@@ -132,8 +125,8 @@ static int extract_archive(const char *archive_path, const char *extract_path) {
     struct archive *a;
     struct archive *ext;
     struct archive_entry *entry;
-    int flags = ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL |
-                ARCHIVE_EXTRACT_FFLAGS | ARCHIVE_EXTRACT_OWNER;
+    int flags = ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS |
+                ARCHIVE_EXTRACT_OWNER;
     int r;
 
     a = archive_read_new();
@@ -147,8 +140,8 @@ static int extract_archive(const char *archive_path, const char *extract_path) {
     archive_write_disk_set_standard_lookup(ext);
 
     if ((r = archive_read_open_filename(a, archive_path, BUFFER_SIZE))) {
-        fprintf(stderr, "Error: Extracting failed (read_open_filename), errno: %d, string: %s\n",
-                archive_errno(a), archive_error_string(a));
+        fprintf(stderr, "Error: Extracting failed (read_open_filename), errno: %d, string: %s\n", archive_errno(a),
+                archive_error_string(a));
         return -1;
     }
 
@@ -185,8 +178,9 @@ static int extract_archive(const char *archive_path, const char *extract_path) {
 
 static int setup_runtime(void) {
     int ret = 0;
-    char *archive_path = join_path(g_yawl_dir, RUNTIME_ARCHIVE_NAME);
-    char *runtime_path = join_path(g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
+    char *archive_path = NULL, *runtime_path = NULL;
+    join_paths(archive_path, g_yawl_dir, RUNTIME_ARCHIVE_NAME);
+    join_paths(runtime_path, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
 
     struct stat st;
     if (stat(runtime_path, &st) == 0 && S_ISDIR(st.st_mode))
@@ -208,71 +202,47 @@ setup_done:
     return ret;
 }
 
-static char *build_library_paths(const char *wine_path) {
+static char *build_library_paths(const char *wine_top_path) {
     const char *system_paths[] = {"/lib", "/lib32", "/lib64", "/usr/lib", "/usr/lib32", "/usr/lib64", NULL};
-    char *wine_lib64_path = join_path(wine_path, "/lib64");
-    char *wine_lib32_path = join_path(wine_path, "/lib32");
-    char *wine_lib_path = join_path(wine_path, "/lib");
+    char *wine_lib64_path = NULL, *wine_lib32_path = NULL, *wine_lib_path = NULL;
 
-    size_t total_len = strlen(wine_lib64_path) + strlen(wine_lib32_path) + strlen(wine_lib_path) + 3;
-    for (const char **path = system_paths; *path; path++) {
-        if (access(*path, F_OK) == 0)
-            total_len += strlen(*path) + 1; /* +1 for : */
-    }
+    join_paths(wine_lib64_path, wine_top_path, "lib64");
+    join_paths(wine_lib32_path, wine_top_path, "lib32");
+    join_paths(wine_lib_path, wine_top_path, "lib");
+
+    char *result = NULL;
 
     const char *orig_path = getenv("LD_LIBRARY_PATH");
     if (orig_path)
-        total_len += strlen(orig_path) + 1;
+        append_sep(result, ":", orig_path);
 
-    char *result = malloc(total_len);
-    snprintf(result, total_len, "%s:%s:%s", wine_lib64_path, wine_lib32_path, wine_lib_path);
+    append_sep(result, ":", wine_lib64_path, wine_lib32_path, wine_lib_path);
 
     for (const char **path = system_paths; *path; path++) {
-        if (access(*path, F_OK) == 0) {
-            char *temp = result;
-            asprintf(&result, "%s:%s", temp, *path);
-            free(temp);
-        }
-    }
-
-    if (orig_path) {
-        char *temp = result;
-        asprintf(&result, "%s:%s", temp, orig_path);
-        free(temp);
+        if (access(*path, F_OK) == 0)
+            append_sep(result, ":", *path);
     }
 
     free(wine_lib64_path);
     free(wine_lib32_path);
     free(wine_lib_path);
+
     return result;
 }
 
 /* required for ancient Debian/Ubuntu */
 static char *build_mesa_paths(void) {
-    const char *mesa_paths[] = {"/usr/lib/i386-linux-gnu/dri", "/usr/lib/x86_64-linux-gnu/dri",
-                                "/usr/lib/dri", "/usr/lib32/dri", "/usr/lib64/dri", NULL};
+    const char *mesa_paths[] = {"/usr/lib/i386-linux-gnu/dri",
+                                "/usr/lib/x86_64-linux-gnu/dri",
+                                "/usr/lib/dri",
+                                "/usr/lib32/dri",
+                                "/usr/lib64/dri",
+                                NULL};
 
-    size_t total_len = 1;
+    char *result = NULL;
     for (const char **path = mesa_paths; *path; path++) {
         if (access(*path, F_OK) == 0)
-            total_len += strlen(*path) + 1;
-    }
-
-    if (total_len == 1)
-        return NULL;
-
-    char *result = malloc(total_len);
-    result[0] = '\0';
-
-    for (const char **path = mesa_paths; *path; path++) {
-        if (access(*path, F_OK) == 0) {
-            if (result[0] != '\0') {
-                char *temp = result;
-                asprintf(&result, "%s:%s", temp, *path);
-                free(temp);
-            } else
-                strcpy(result, *path);
-        }
+            append_sep(result, ":", *path);
     }
 
     return result;
@@ -283,8 +253,8 @@ static char *find_wine_binary(const char *wine_path) {
     char *result = NULL;
 
     for (const char **bin = binaries; *bin; bin++) {
-        char *path;
-        asprintf(&path, "%s/bin/%s", wine_path, *bin);
+        char *path = NULL;
+        join_paths(path, wine_path, "bin", *bin);
         if (access(path, X_OK) == 0) {
             result = path;
             break;
@@ -307,7 +277,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    g_yawl_dir = join_path(g_top_data_dir, PROG_NAME "/");
+    join_paths(g_yawl_dir, g_top_data_dir, PROG_NAME);
     if (ensure_dir(g_yawl_dir) != 0) {
         fprintf(stderr, "Error: The program directory (%s) is unusable. Exiting.\n", g_yawl_dir);
         return 1;
@@ -328,7 +298,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char *entry_point = join_path(g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    char *entry_point = NULL;
+    join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
     if (access(entry_point, X_OK) != 0) {
         fprintf(stderr, "Error: Runtime entry point not found: %s\n", entry_point);
         free(entry_point);
@@ -349,12 +320,6 @@ int main(int argc, char *argv[]) {
     char *lib_paths = build_library_paths(wine_path);
     if (lib_paths) {
         setenv("LD_LIBRARY_PATH", lib_paths, 1);
-
-        if (!getenv("ORIG_LD_LIBRARY_PATH")) {
-            const char *orig_path = getenv("LD_LIBRARY_PATH");
-            if (orig_path)
-                setenv("ORIG_LD_LIBRARY_PATH", orig_path, 1);
-        }
         free(lib_paths);
     }
 

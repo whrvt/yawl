@@ -1,6 +1,8 @@
 *.o
 *.lo
 *.la
+*.h.in*
+*.dirstamp
 .deps/
 .libs/
 dist/
