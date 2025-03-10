@@ -72,6 +72,43 @@ static void print_usage(void) {
            "\n");
 }
 
+/* Parse a single option string and update the options structure */
+static int parse_option(const char *option, struct options *opts) {
+    if (!option || !opts || !option[0])
+        return 0; /* Skip empty options, not an error */
+
+    if (strcmp(option, "verify") == 0) {
+        opts->verify = 1;
+    } else if (strcmp(option, "reinstall") == 0) {
+        opts->reinstall = 1;
+    } else if (strcmp(option, "help") == 0) {
+        opts->help = 1;
+    } else if (strncmp(option, "exec=", 5) == 0) {
+        free(opts->exec_path);
+
+        opts->exec_path = expand_path(option + 5);
+        if (!opts->exec_path) {
+            fprintf(stderr, "Error: Failed to expand exec path: %s\n", option + 5);
+            return -1;
+        }
+    } else if (strncmp(option, "make_wrapper=", 13) == 0) {
+        free(opts->make_wrapper);
+        opts->make_wrapper = strdup(option + 13);
+        if (!opts->make_wrapper) {
+            return -1;
+        }
+    } else if (strncmp(option, "config=", 7) == 0) {
+        free(opts->config);
+        opts->config = strdup(option + 7);
+        if (!opts->config) {
+            return -1;
+        }
+    } else
+        return 1; /* Unknown option */
+
+    return 0;
+}
+
 static int parse_env_options(struct options *opts) {
     opts->verify = 0;
     opts->reinstall = 0;
@@ -96,37 +133,13 @@ static int parse_env_options(struct options *opts) {
 
     char *token = strtok(verbs_copy, ";");
     while (token) {
-        if (strcmp(token, "verify") == 0)
-            opts->verify = 1;
-        else if (strcmp(token, "reinstall") == 0)
-            opts->reinstall = 1;
-        else if (strcmp(token, "help") == 0)
-            opts->help = 1;
-        else if (strncmp(token, "exec=", 5) == 0) {
-            free(opts->exec_path);
-
-            char *expanded_path = expand_path(token + 5);
-            if (!expanded_path) {
-                free(verbs_copy);
-                return -1;
-            }
-
-            opts->exec_path = expanded_path;
-        } else if (strncmp(token, "make_wrapper=", 13) == 0) {
-            opts->make_wrapper = strdup(token + 13);
-            if (!opts->make_wrapper) {
-                free(verbs_copy);
-                return -1;
-            }
-        } else if (strncmp(token, "config=", 7) == 0) {
-            opts->config = strdup(token + 7);
-            if (!opts->config) {
-                free(verbs_copy);
-                return -1;
-            }
-        } else
+        int result = parse_option(token, opts);
+        if (result < 0) {
+            free(verbs_copy);
+            return -1;
+        } else if (result > 0) {
             fprintf(stderr, "Warning: Unknown YAWL_VERBS token: %s\n", token);
-
+        }
         token = strtok(NULL, ";");
     }
 
@@ -601,25 +614,18 @@ static int load_config(const char *config_name, struct options *opts) {
         if (line[0] == '\0')
             continue;
 
-        /* Parse configuration lines */
-        if (strcmp(line, "verify") == 0)
-            opts->verify = 1;
-        else if (strcmp(line, "reinstall") == 0)
-            opts->reinstall = 1;
-        else if (strncmp(line, "exec=", 5) == 0) {
-            free(opts->exec_path);
-            opts->exec_path = expand_path(line + 5);
-            if (!opts->exec_path) {
-                fprintf(stderr, "Error: Failed to expand exec path: %s\n", line + 5);
-                ret = -1;
-                break;
-            }
-        } else
+        int result = parse_option(line, opts);
+        if (result < 0) {
+            ret = -1;
+            break;
+        } else if (result > 0) {
             fprintf(stderr, "Warning: Unknown configuration option: %s\n", line);
+        }
     }
 
     fclose(fp);
-    printf("Loaded configuration from: %s\n", config_path);
+    /* TODO: implement verbose option, don't pollute stdout otherwise */
+    /* printf("Loaded configuration from: %s\n", config_path); */
     free(config_path);
 
     return ret;
@@ -636,6 +642,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* TODO: print parsed options for verbose mode */
     if (parse_env_options(&opts) != 0) {
         fprintf(stderr, "Error: Failed to parse options. Exiting.\n");
         return 1;
