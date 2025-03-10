@@ -10,16 +10,18 @@ Also, the static link libraries (curl, zlib) are included, but can be rebuilt wi
 
 ## Running
 
-`WINE_PATH=/path/to/compatible/wine yawl winecfg.exe`
+`yawl winecfg.exe`
 
 Current useful environment variables:
-- `WINE_PATH`: Path to the top-level folder that contains `bin/wine`, `lib/wine`, etc. It's `/usr` by default.
 - `YAWL_VERBS`: Semicolon-separated list of verbs to control yawl behavior:
   - `verify`: Verify the runtime before running
   - `reinstall`: Force reinstallation of the runtime
   - `help`: Display help and exit
-  
-  Example: `YAWL_VERBS="reinstall;verify" yawl winecfg`
-- Other environment variables are passed through as usual.
+  - `exec=PATH`: Set the executable to run in the container (default: `/usr/bin/wine`)
 
-TBD
+  Examples:
+  - `YAWL_VERBS="reinstall;verify" yawl winecfg`
+  - `YAWL_VERBS="exec=/opt/wine/bin/wine64" yawl explorer.exe`
+  - `YAWL_VERBS="exec=/opt/firefox/firefox" yawl`
+
+- Other environment variables are passed through as usual.

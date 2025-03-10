@@ -44,45 +44,53 @@
 #define RUNTIME_ARCHIVE_NAME RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
 #define RUNTIME_ARCHIVE_HASH_URL RUNTIME_BASE_URL "/SHA256SUMS"
 
+#define DEFAULT_EXEC_PATH "/usr/bin/wine"
+
 struct options {
-    int verify;    /* 0 = no verification (default), 1 = verify */
-    int reinstall; /* 0 = don't reinstall unless needed, 1 = force reinstall */
-    int help;      /* 0 = don't show help, 1 = show help and exit */
+    int verify;      /* 0 = no verification (default), 1 = verify */
+    int reinstall;   /* 0 = don't reinstall unless needed, 1 = force reinstall */
+    int help;        /* 0 = don't show help, 1 = show help and exit */
+    char *exec_path; /* Path to the executable to run (default: /usr/bin/wine) */
 };
 
 static char *g_top_data_dir;
 static char *g_yawl_dir;
 
 static void print_usage(void) {
-    printf("Usage: " PROG_NAME " [wine_args...]\n");
+    printf("Usage: " PROG_NAME " [args_for_executable...]\n");
     printf("\n");
     printf("Environment variables:\n");
     printf("  YAWL_VERBS       Semicolon-separated list of verbs to control yawl behavior:\n");
     printf("                   - 'verify'    Verify the runtime before running (default: only verify after install)\n");
-    printf("                                 Also can be used to check for runtime updates (will be a separate option in the future)\n");
+    printf("                                 Also can be used to check for runtime updates (will be a separate option "
+           "in the future)\n");
     printf("                   - 'reinstall' Force reinstallation of the runtime\n");
     printf("                   - 'help'      Display this help and exit\n");
+    printf("                   - 'exec=PATH' Set the executable to run in the container (default: %s)\n",
+           DEFAULT_EXEC_PATH);
     printf("                   Example: YAWL_VERBS=\"verify;reinstall\" " PROG_NAME " winecfg\n");
-    printf("\n");
-    printf("  WINE_PATH        Path to the top-level folder that contains bin/wine, lib/wine, etc.\n");
-    printf("                   Default: /usr\n");
-    printf("\n");
-    printf("Example: " PROG_NAME " winecfg\n");
-    printf("Example: YAWL_VERBS=\"reinstall\" " PROG_NAME " winecfg\n");
+    printf("                   Example: YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" " PROG_NAME " winecfg\n");
 }
 
 static int parse_env_options(struct options *opts) {
     opts->verify = 0;
     opts->reinstall = 0;
     opts->help = 0;
+    opts->exec_path = strdup(DEFAULT_EXEC_PATH);
+
+    if (!opts->exec_path)
+        return -1;
 
     const char *verbs = getenv("YAWL_VERBS");
     if (!verbs)
         return 0;
 
     char *verbs_copy = strdup(verbs);
-    if (!verbs_copy)
+    if (!verbs_copy) {
+        free(opts->exec_path);
+        opts->exec_path = NULL;
         return -1;
+    }
 
     char *token = strtok(verbs_copy, ";");
     while (token) {
@@ -92,7 +100,14 @@ static int parse_env_options(struct options *opts) {
             opts->reinstall = 1;
         else if (strcmp(token, "help") == 0)
             opts->help = 1;
-        else
+        else if (strncmp(token, "exec=", 5) == 0) {
+            free(opts->exec_path);
+            opts->exec_path = strdup(token + 5);
+            if (!opts->exec_path) {
+                free(verbs_copy);
+                return -1;
+            }
+        } else
             fprintf(stderr, "Warning: Unknown YAWL_VERBS token: %s\n", token);
 
         token = strtok(NULL, ";");
@@ -115,7 +130,7 @@ static char *setup_data_dir(void) {
     } else
         result = strdup(temp_dir);
 
-    if (access(result, X_OK) != 0)
+    if (access(result, W_OK) != 0)
         return NULL;
 
     return result;
@@ -236,8 +251,6 @@ static int verify_runtime(const char *runtime_path) {
         free(pv_verify_path);
         return -1;
     }
-
-    printf("Using pv-verify for runtime verification...\n");
 
     char *cmd = NULL;
     append_sep(cmd, " ", pv_verify_path, "--quiet");
@@ -433,30 +446,62 @@ setup_done:
     return ret;
 }
 
-static char *build_library_paths(const char *wine_top_path) {
-    const char *system_paths[] = {"/lib", "/lib32", "/lib64", "/usr/lib", "/usr/lib32", "/usr/lib64", NULL};
+static char *get_wine_top_dir(const char *exec_path) {
+    char *dirname = strdup(exec_path);
+    if (!dirname)
+        return NULL;
+
+    char *last_slash = strrchr(dirname, '/');
+    if (last_slash)
+        *last_slash = '\0';
+
+    last_slash = strrchr(dirname, '/');
+    if (last_slash && strcmp(last_slash, "/bin") == 0) {
+        *last_slash = '\0';
+        return dirname;
+    } else {
+        free(dirname);
+        return NULL;
+    }
+}
+
+static char *build_library_paths(const char *exec_path) {
+    char *wine_top_dir = get_wine_top_dir(exec_path);
     char *wine_lib64_path = NULL, *wine_lib32_path = NULL, *wine_lib_path = NULL;
-
-    join_paths(wine_lib64_path, wine_top_path, "lib64");
-    join_paths(wine_lib32_path, wine_top_path, "lib32");
-    join_paths(wine_lib_path, wine_top_path, "lib");
-
     char *result = NULL;
 
-    const char *orig_path = getenv("LD_LIBRARY_PATH");
-    if (orig_path)
-        append_sep(result, ":", orig_path);
+    const char *system_paths[] = {"/lib", "/lib32", "/lib64", "/usr/lib", "/usr/lib32", "/usr/lib64", NULL};
 
-    append_sep(result, ":", wine_lib64_path, wine_lib32_path, wine_lib_path);
+    /* Check if we have a top-level Wine directory */
+    if (wine_top_dir) {
+        join_paths(wine_lib64_path, wine_top_dir, "lib64");
+        join_paths(wine_lib32_path, wine_top_dir, "lib32");
+        join_paths(wine_lib_path, wine_top_dir, "lib");
 
+        const char *orig_path = getenv("LD_LIBRARY_PATH");
+        if (orig_path)
+            append_sep(result, ":", orig_path);
+
+        append_sep(result, ":", wine_lib64_path, wine_lib32_path, wine_lib_path);
+
+        free(wine_lib64_path);
+        free(wine_lib32_path);
+        free(wine_lib_path);
+        free(wine_top_dir);
+    } else {
+        /* If we don't have a top-level Wine directory, just use the original path */
+        const char *orig_path = getenv("LD_LIBRARY_PATH");
+        if (orig_path)
+            result = strdup(orig_path);
+        else
+            result = strdup("");
+    }
+
+    /* Add system paths */
     for (const char **path = system_paths; *path; path++) {
         if (access(*path, F_OK) == 0)
             append_sep(result, ":", *path);
     }
-
-    free(wine_lib64_path);
-    free(wine_lib32_path);
-    free(wine_lib_path);
 
     return result;
 }
@@ -479,23 +524,6 @@ static char *build_mesa_paths(void) {
     return result;
 }
 
-static char *find_wine_binary(const char *wine_path) {
-    const char *binaries[] = {"wine64", "wine", NULL};
-    char *result = NULL;
-
-    for (const char **bin = binaries; *bin; bin++) {
-        char *path = NULL;
-        join_paths(path, wine_path, "bin", *bin);
-        if (access(path, X_OK) == 0) {
-            result = path;
-            break;
-        }
-        free(path);
-    }
-
-    return result;
-}
-
 int main(int argc, char *argv[]) {
     struct options opts;
 
@@ -504,8 +532,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (parse_env_options(&opts) != 0)
-        fprintf(stderr, "Warning: Failed to parse options.\n");
+    if (parse_env_options(&opts) != 0) {
+        fprintf(stderr, "Error: Failed to parse options. Exiting.\n");
+        return 1;
+    }
 
     if (opts.help) {
         print_usage();
@@ -529,13 +559,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    const char *wine_path = getenv("WINE_PATH");
-    if (!wine_path)
-        wine_path = "/usr";
-
-    char *wine_bin = find_wine_binary(wine_path);
-    if (!wine_bin) {
-        fprintf(stderr, "Error: No wine binary found in %s/bin. Exiting.\n", wine_path);
+    if (access(opts.exec_path, X_OK) != 0) {
+        fprintf(stderr, "Error: Executable not found or not executable: %s\n", opts.exec_path);
         return 1;
     }
 
@@ -543,8 +568,6 @@ int main(int argc, char *argv[]) {
     join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
     if (access(entry_point, X_OK) != 0) {
         fprintf(stderr, "Error: Runtime entry point not found: %s\n", entry_point);
-        free(entry_point);
-        free(wine_bin);
         return 1;
     }
 
@@ -552,13 +575,14 @@ int main(int argc, char *argv[]) {
     new_argv[0] = entry_point;
     new_argv[1] = "--verb=waitforexitandrun";
     new_argv[2] = "--";
-    new_argv[3] = wine_bin;
+    new_argv[3] = opts.exec_path;
 
     for (int i = 1; i < argc; i++) {
         new_argv[i + 3] = argv[i];
     }
 
-    char *lib_paths = build_library_paths(wine_path);
+    /* Set up library paths based on the executable path */
+    char *lib_paths = build_library_paths(opts.exec_path);
     if (lib_paths) {
         setenv("LD_LIBRARY_PATH", lib_paths, 1);
         free(lib_paths);
