@@ -1,4 +1,4 @@
-AC_INIT([yawl], [0.0.5], [william@horvath.blog])
+AC_INIT([yawl], [1.0.0], [william@horvath.blog])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_SRCDIR([src/yawl.c])
@@ -6,7 +6,6 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_PREFIX_DEFAULT([dist]) # default `make install`s to ./dist/bin/ (modify with --prefix=)
 
-# Checks for programs
 AC_PROG_CC([musl-clang])
 if test -z "$CC"; then
     AC_MSG_ERROR([musl-clang not found])

@@ -54,95 +54,51 @@ static char *g_top_data_dir;
 static char *g_yawl_dir;
 
 static void print_usage(void) {
-    printf("Usage: " PROG_NAME " [options] [-- wine_args...]\n");
-    printf("Options:\n");
-    printf("  --verify       Verify the runtime before running (default: only verify after install)\n"
-"                 Also can be used to check for runtime updates (updating will be a separate option in the future)\n");
-    printf("  --reinstall    Force reinstallation of the runtime\n");
-    printf("  --help         Display this help and exit\n");
-    printf("\n");
-    printf("Notes:\n");
-    printf("  When using options, you must separate Wine arguments with --\n");
-    printf("  Example: " PROG_NAME " --reinstall -- winecfg --help\n");
-    printf("\n");
-    printf("  Without options, you can call Wine directly:\n");
-    printf("  Example: " PROG_NAME " winecfg --help\n");
+    printf("Usage: " PROG_NAME " [wine_args...]\n");
     printf("\n");
     printf("Environment variables:\n");
-    printf("  WINE_PATH      Path to the top-level folder that contains bin/wine, lib/wine, etc.\n");
-    printf("                 Default: /usr\n");
+    printf("  YAWL_VERBS       Semicolon-separated list of verbs to control yawl behavior:\n");
+    printf("                   - 'verify'    Verify the runtime before running (default: only verify after install)\n");
+    printf("                                 Also can be used to check for runtime updates (will be a separate option in the future)\n");
+    printf("                   - 'reinstall' Force reinstallation of the runtime\n");
+    printf("                   - 'help'      Display this help and exit\n");
+    printf("                   Example: YAWL_VERBS=\"verify;reinstall\" " PROG_NAME " winecfg\n");
+    printf("\n");
+    printf("  WINE_PATH        Path to the top-level folder that contains bin/wine, lib/wine, etc.\n");
+    printf("                   Default: /usr\n");
+    printf("\n");
+    printf("Example: " PROG_NAME " winecfg\n");
+    printf("Example: YAWL_VERBS=\"reinstall\" " PROG_NAME " winecfg\n");
 }
 
-static int parse_options(int argc, char *argv[], struct options *opts, int *first_arg_index) {
-    static struct option long_options[] = {{"verify", no_argument, 0, 'v'},
-                                           {"no-verify", no_argument, 0, 'n'},
-                                           {"reinstall", no_argument, 0, 'r'},
-                                           {"help", no_argument, 0, 'h'},
-                                           {0, 0, 0, 0}};
-
-    /* Set defaults */
+static int parse_env_options(struct options *opts) {
     opts->verify = 0;
     opts->reinstall = 0;
     opts->help = 0;
 
-    int option_index = 0;
-    int c;
-    int has_yawl_options = 0;
-    int found_separator = 0;
+    const char *verbs = getenv("YAWL_VERBS");
+    if (!verbs)
+        return 0;
 
-    optind = 1;
-
-    /* First pass: check if we have a -- separator */
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--") == 0) {
-            found_separator = 1;
-            break;
-        }
-    }
-
-    while ((c = getopt_long(argc, argv, "", long_options, &option_index)) != -1) {
-        has_yawl_options = 1;
-
-        if (strcmp(argv[optind - 1], "--") == 0)
-            break;
-
-        switch (c) {
-        case 'v':
-            opts->verify = 1;
-            break;
-        case 'n':
-            opts->verify = 0;
-            break;
-        case 'r':
-            opts->reinstall = 1;
-            break;
-        case 'h':
-            opts->help = 1;
-            break;
-        case '?':
-            return -1;
-        default:
-            fprintf(stderr, "Error: Unknown option code %d\n", c);
-            return -1;
-        }
-    }
-
-    if (has_yawl_options && !found_separator && optind < argc) {
-        fprintf(stderr, "Error: When using yawl options, you must separate Wine arguments with --\n");
-        fprintf(stderr, "Example: yawl --reinstall -- winecfg --help\n");
+    char *verbs_copy = strdup(verbs);
+    if (!verbs_copy)
         return -1;
+
+    char *token = strtok(verbs_copy, ";");
+    while (token) {
+        if (strcmp(token, "verify") == 0)
+            opts->verify = 1;
+        else if (strcmp(token, "reinstall") == 0)
+            opts->reinstall = 1;
+        else if (strcmp(token, "help") == 0)
+            opts->help = 1;
+        else
+            fprintf(stderr, "Warning: Unknown YAWL_VERBS token: %s\n", token);
+
+        token = strtok(NULL, ";");
     }
 
-    if (found_separator) {
-        for (int i = optind; i < argc; i++) {
-            if (strcmp(argv[i], "--") == 0) {
-                *first_arg_index = i + 1;
-                return 0;
-            }
-        }
-    }
-
-    *first_arg_index = optind;
+    free(verbs_copy);
     return 0;
 }
 
@@ -155,7 +111,7 @@ static char *setup_data_dir(void) {
             if (!(pw && (temp_dir = pw->pw_dir)))
                 return NULL;
         }
-        join_paths(result, temp_dir, ".local", "share");
+        join_paths(result, temp_dir, ".local/share");
     } else
         result = strdup(temp_dir);
 
@@ -542,15 +498,14 @@ static char *find_wine_binary(const char *wine_path) {
 
 int main(int argc, char *argv[]) {
     struct options opts;
-    int first_arg_index = 1;
 
     if (geteuid() == 0) {
         fprintf(stderr, "Error: This program should not be run as root. Exiting.\n");
         return 1;
     }
 
-    if (parse_options(argc, argv, &opts, &first_arg_index) != 0)
-        return 1;
+    if (parse_env_options(&opts) != 0)
+        fprintf(stderr, "Warning: Failed to parse options.\n");
 
     if (opts.help) {
         print_usage();
@@ -593,17 +548,14 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Skip our options to get to wine args */
-    int wine_argc = argc - first_arg_index + 4;
-    char **new_argv = calloc(wine_argc + 1, sizeof(char *));
+    char **new_argv = calloc(argc + 4, sizeof(char *));
     new_argv[0] = entry_point;
     new_argv[1] = "--verb=waitforexitandrun";
     new_argv[2] = "--";
     new_argv[3] = wine_bin;
 
-    /* Copy the wine args */
-    for (int i = first_arg_index; i < argc; i++) {
-        new_argv[i - first_arg_index + 4] = argv[i];
+    for (int i = 1; i < argc; i++) {
+        new_argv[i + 3] = argv[i];
     }
 
     char *lib_paths = build_library_paths(wine_path);
