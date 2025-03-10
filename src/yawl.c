@@ -36,16 +36,21 @@
 #define RUNTIME_ARCHIVE_HASH_URL RUNTIME_BASE_URL "/SHA256SUMS"
 
 #define DEFAULT_EXEC_PATH "/usr/bin/wine"
+#define CONFIG_DIR "configs"
+#define CONFIG_EXTENSION ".cfg"
 
 struct options {
-    int verify;      /* 0 = no verification (default), 1 = verify */
-    int reinstall;   /* 0 = don't reinstall unless needed, 1 = force reinstall */
-    int help;        /* 0 = don't show help, 1 = show help and exit */
-    char *exec_path; /* Path to the executable to run (default: /usr/bin/wine) */
+    int verify;         /* 0 = no verification (default), 1 = verify */
+    int reinstall;      /* 0 = don't reinstall unless needed, 1 = force reinstall */
+    int help;           /* 0 = don't show help, 1 = show help and exit */
+    char *exec_path;    /* Path to the executable to run (default: /usr/bin/wine) */
+    char *make_wrapper; /* Name of the wrapper to create (NULL = don't create) */
+    char *config;       /* Name of the config to use (NULL = use argv[0] or default) */
 };
 
 static char *g_top_data_dir;
 static char *g_yawl_dir;
+static char *g_config_dir;
 
 static void print_usage(void) {
     printf("Usage: " PROG_NAME " [args_for_executable...]\n");
@@ -59,8 +64,12 @@ static void print_usage(void) {
     printf("                   - 'help'      Display this help and exit\n");
     printf("                   - 'exec=PATH' Set the executable to run in the container (default: %s)\n",
            DEFAULT_EXEC_PATH);
+    printf("                   - 'make_wrapper=NAME' Create a wrapper configuration and symlink\n");
+    printf("                   - 'config=NAME' Use a specific configuration file\n");
     printf("                   Example: YAWL_VERBS=\"verify;reinstall\" " PROG_NAME " winecfg\n");
     printf("                   Example: YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" " PROG_NAME " winecfg\n");
+    printf("                   Example: YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" " PROG_NAME
+           "\n");
 }
 
 static int parse_env_options(struct options *opts) {
@@ -68,6 +77,8 @@ static int parse_env_options(struct options *opts) {
     opts->reinstall = 0;
     opts->help = 0;
     opts->exec_path = strdup(DEFAULT_EXEC_PATH);
+    opts->make_wrapper = NULL;
+    opts->config = NULL;
 
     if (!opts->exec_path)
         return -1;
@@ -101,6 +112,18 @@ static int parse_env_options(struct options *opts) {
             }
 
             opts->exec_path = expanded_path;
+        } else if (strncmp(token, "make_wrapper=", 13) == 0) {
+            opts->make_wrapper = strdup(token + 13);
+            if (!opts->make_wrapper) {
+                free(verbs_copy);
+                return -1;
+            }
+        } else if (strncmp(token, "config=", 7) == 0) {
+            opts->config = strdup(token + 7);
+            if (!opts->config) {
+                free(verbs_copy);
+                return -1;
+            }
         } else
             fprintf(stderr, "Warning: Unknown YAWL_VERBS token: %s\n", token);
 
@@ -406,8 +429,207 @@ static char *build_mesa_paths(void) {
     return result;
 }
 
+/* Extract the config name from argv[0] (e.g., "yawl-foo" -> "foo") */
+static char *get_config_name_from_argv0(const char *argv0) {
+    char *base_name = get_base_name(argv0);
+    if (!base_name)
+        return NULL;
+
+    char *dash = strchr(base_name, '-');
+    if (!dash) {
+        free(base_name);
+        return NULL;
+    }
+
+    char *config_name = strdup(dash + 1);
+    free(base_name);
+
+    return config_name;
+}
+
+/* Create a configuration file with the current options */
+static int create_config_file(const char *config_name, const struct options *opts) {
+    char *config_path = NULL;
+    FILE *fp = NULL;
+    int ret = 0;
+
+    /* Create the config directory if it doesn't exist */
+    if (ensure_dir(g_config_dir) != 0) {
+        fprintf(stderr, "Error: Failed to create config directory: %s\n", g_config_dir);
+        return -1;
+    }
+
+    /* Build the config file path */
+    join_paths(config_path, g_config_dir, config_name);
+    append_sep(config_path, "", CONFIG_EXTENSION);
+
+    /* Open the config file */
+    fp = fopen(config_path, "w");
+    if (!fp) {
+        fprintf(stderr, "Error: Failed to create config file: %s\n", strerror(errno));
+        free(config_path);
+        return -1;
+    }
+
+    /* Write the current configuration */
+    if (opts->verify)
+        fprintf(fp, "verify\n");
+    if (opts->reinstall)
+        fprintf(fp, "reinstall\n");
+    if (opts->exec_path && strcmp(opts->exec_path, DEFAULT_EXEC_PATH) != 0)
+        fprintf(fp, "exec=%s\n", opts->exec_path);
+
+    fclose(fp);
+    printf("Created configuration file: %s\n", config_path);
+    free(config_path);
+
+    return ret;
+}
+
+/* Create a symlink to the current binary with the suffix */
+static int create_symlink(const char *config_name) {
+    char *exec_path = NULL;
+    char *exec_dir = NULL;
+    char *base_name = NULL;
+    char *symlink_path = NULL;
+    int ret = 0;
+
+    /* Get the full path to the current executable */
+    exec_path = realpath("/proc/self/exe", NULL);
+    if (!exec_path) {
+        fprintf(stderr, "Error: Failed to get executable path: %s\n", strerror(errno));
+        return -1;
+    }
+
+    /* Extract the base name and directory */
+    base_name = get_base_name(exec_path);
+    if (!base_name) {
+        free(exec_path);
+        return -1;
+    }
+
+    /* Create a copy of exec_path to extract the directory */
+    exec_dir = strdup(exec_path);
+    if (!exec_dir) {
+        free(exec_path);
+        free(base_name);
+        return -1;
+    }
+
+    char *last_slash = strrchr(exec_dir, '/');
+    if (last_slash)
+        *last_slash = '\0';
+
+    /* Build the symlink path */
+    join_paths(symlink_path, exec_dir, base_name);
+    append_sep(symlink_path, "-", config_name);
+
+    /* Create the symlink */
+    if (access(symlink_path, F_OK) == 0) {
+        fprintf(stderr, "Warning: Symlink already exists: %s\n", symlink_path);
+        unlink(symlink_path);
+    }
+
+    if (symlink(exec_path, symlink_path) != 0) {
+        fprintf(stderr, "Error: Failed to create symlink: %s\n", strerror(errno));
+        ret = -1;
+    } else {
+        printf("Created symlink: %s -> %s\n", symlink_path, exec_path);
+    }
+
+    free(exec_path);
+    free(exec_dir);
+    free(base_name);
+    free(symlink_path);
+
+    return ret;
+}
+
+/* Create a wrapper configuration and symlink */
+static int create_wrapper(const char *config_name, const struct options *opts) {
+    if (create_config_file(config_name, opts) != 0)
+        return -1;
+
+    if (create_symlink(config_name) != 0)
+        return -1;
+
+    return 0;
+}
+
+/* Load a configuration from a file */
+static int load_config(const char *config_name, struct options *opts) {
+    char *config_path = NULL;
+    FILE *fp = NULL;
+    char line[BUFFER_SIZE];
+    int ret = 0;
+
+    /* First, try using the name directly as a path */
+    if (access(config_name, F_OK) == 0) {
+        config_path = strdup(config_name);
+    } else {
+        /* Build the config file path in the standard location */
+        join_paths(config_path, g_config_dir, config_name);
+
+        /* Add extension if not already present */
+        if (!strstr(config_name, CONFIG_EXTENSION))
+            append_sep(config_path, "", CONFIG_EXTENSION);
+
+        /* Check if the file exists */
+        if (access(config_path, F_OK) != 0) {
+            fprintf(stderr, "Error: Config file not found: %s\n", config_path);
+            free(config_path);
+            return -1;
+        }
+    }
+
+    /* Open the config file */
+    fp = fopen(config_path, "r");
+    if (!fp) {
+        fprintf(stderr, "Error: Failed to open config file: %s\n", strerror(errno));
+        free(config_path);
+        return -1;
+    }
+
+    /* Read the configuration */
+    while (fgets(line, sizeof(line), fp)) {
+        /* Remove trailing newline */
+        char *newline = strchr(line, '\n');
+        if (newline)
+            *newline = '\0';
+
+        /* Skip empty lines */
+        if (line[0] == '\0')
+            continue;
+
+        /* Parse configuration lines */
+        if (strcmp(line, "verify") == 0)
+            opts->verify = 1;
+        else if (strcmp(line, "reinstall") == 0)
+            opts->reinstall = 1;
+        else if (strncmp(line, "exec=", 5) == 0) {
+            free(opts->exec_path);
+            opts->exec_path = expand_path(line + 5);
+            if (!opts->exec_path) {
+                fprintf(stderr, "Error: Failed to expand exec path: %s\n", line + 5);
+                ret = -1;
+                break;
+            }
+        } else
+            fprintf(stderr, "Warning: Unknown configuration option: %s\n", line);
+    }
+
+    fclose(fp);
+    printf("Loaded configuration from: %s\n", config_path);
+    free(config_path);
+
+    return ret;
+}
+
+/* Note that we don't care about freeing things from main() since that's handled
+   either when execv() is called or when the process exits due to an error. */
 int main(int argc, char *argv[]) {
     struct options opts;
+    char *config_name = NULL;
 
     if (geteuid() == 0) {
         fprintf(stderr, "Error: This program should not be run as root. Exiting.\n");
@@ -434,6 +656,37 @@ int main(int argc, char *argv[]) {
     if (ensure_dir(g_yawl_dir) != 0) {
         fprintf(stderr, "Error: The program directory (%s) is unusable. Exiting.\n", g_yawl_dir);
         return 1;
+    }
+
+    /* Set up config directory */
+    join_paths(g_config_dir, g_yawl_dir, CONFIG_DIR);
+
+    /* Handle make_wrapper option */
+    if (opts.make_wrapper) {
+        if (create_wrapper(opts.make_wrapper, &opts) != 0) {
+            fprintf(stderr, "Error: Failed to create wrapper configuration. Exiting.\n");
+            return 1;
+        }
+
+        /* Exit after creating the wrapper if no other arguments */
+        if (argc <= 1) {
+            printf("Wrapper created successfully. Use %s-%s to run with this configuration.\n", get_base_name(argv[0]),
+                   opts.make_wrapper);
+            return 0;
+        }
+    }
+
+    if (opts.config) /* Explicit configuration specified */
+        config_name = opts.config;
+    else /* Check if we're being run via a symlink */
+        config_name = get_config_name_from_argv0(argv[0]);
+
+    /* Load configuration if available */
+    if (config_name) {
+        if (load_config(config_name, &opts) != 0)
+            fprintf(stderr, "Error: Failed to load configuration. Continuing with defaults.\n");
+        if (config_name != opts.config) /* Only free if it was allocated by get_config_name_from_argv0 */
+            free(config_name);
     }
 
     if (setup_runtime(&opts) != 0) {

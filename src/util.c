@@ -115,6 +115,18 @@ int remove_dir(const char *path) {
     return rmdir(path);
 }
 
+char *get_base_name(const char *path) {
+    char *path_copy = strdup(path);
+    if (!path_copy)
+        return NULL;
+
+    char *last_slash = strrchr(path_copy, '/');
+    char *base_name = strdup(last_slash ? last_slash + 1 : path_copy);
+    free(path_copy);
+
+    return base_name;
+}
+
 int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len) {
     FILE *fp = fopen(file_path, "rb");
     if (!fp) {

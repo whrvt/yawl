@@ -64,3 +64,6 @@ int extract_archive(const char *archive_path, const char *extract_path);
 
 /* A helper to download a file from `url` to `output_path` with libcurl */
 int download_file(const char *url, const char *output_path);
+
+/* Extract the base name from a given executable path */
+char *get_base_name(const char *path);
