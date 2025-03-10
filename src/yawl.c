@@ -46,6 +46,7 @@ struct options {
     char *exec_path;    /* Path to the executable to run (default: /usr/bin/wine) */
     char *make_wrapper; /* Name of the wrapper to create (NULL = don't create) */
     char *config;       /* Name of the config to use (NULL = use argv[0] or default) */
+    char *wineserver;   /* Path to the wineserver binary (NULL = don't create wineserver wrapper) */
 };
 
 static char *g_top_data_dir;
@@ -66,10 +67,15 @@ static void print_usage(void) {
            DEFAULT_EXEC_PATH);
     printf("                   - 'make_wrapper=NAME' Create a wrapper configuration and symlink\n");
     printf("                   - 'config=NAME' Use a specific configuration file\n");
+    printf("                   - 'wineserver=PATH' Set the wineserver executable path when creating a wrapper\n");
     printf("                   Example: YAWL_VERBS=\"verify;reinstall\" " PROG_NAME " winecfg\n");
     printf("                   Example: YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" " PROG_NAME " winecfg\n");
     printf("                   Example: YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" " PROG_NAME
            "\n");
+    printf(
+        "                   Example: "
+        "YAWL_VERBS=\"make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver\" " PROG_NAME
+        "\n");
 }
 
 /* Parse a single option string and update the options structure */
@@ -77,11 +83,11 @@ static int parse_option(const char *option, struct options *opts) {
     if (!option || !opts || !option[0])
         return 0; /* Skip empty options, not an error */
 
-    if (strcmp(option, "verify") == 0) {
+    if (strncmp(option, "verify", 6) == 0) {
         opts->verify = 1;
-    } else if (strcmp(option, "reinstall") == 0) {
+    } else if (strncmp(option, "reinstall", 9) == 0) {
         opts->reinstall = 1;
-    } else if (strcmp(option, "help") == 0) {
+    } else if (strncmp(option, "help", 4) == 0) {
         opts->help = 1;
     } else if (strncmp(option, "exec=", 5) == 0) {
         free(opts->exec_path);
@@ -103,6 +109,14 @@ static int parse_option(const char *option, struct options *opts) {
         if (!opts->config) {
             return -1;
         }
+    } else if (strncmp(option, "wineserver=", 11) == 0) {
+        free(opts->wineserver);
+
+        opts->wineserver = expand_path(option + 11);
+        if (!opts->wineserver) {
+            fprintf(stderr, "Error: Failed to expand wineserver path: %s\n", option + 11);
+            return -1;
+        }
     } else
         return 1; /* Unknown option */
 
@@ -116,6 +130,7 @@ static int parse_env_options(struct options *opts) {
     opts->exec_path = strdup(DEFAULT_EXEC_PATH);
     opts->make_wrapper = NULL;
     opts->config = NULL;
+    opts->wineserver = NULL;
 
     if (!opts->exec_path)
         return -1;
@@ -558,6 +573,55 @@ static int create_symlink(const char *config_name) {
     return ret;
 }
 
+/* Create a wineserver wrapper configuration and symlink. Useful for winetricks, as it can find wineserver from
+ * `${WINE}server`. */
+static int create_wineserver_wrapper(const char *config_name, const char *wineserver_path) {
+    struct options server_opts;
+    char *server_config_name = NULL;
+    int ret = 0;
+
+    /* Initialize options for the wineserver */
+    server_opts.verify = 0;
+    server_opts.reinstall = 0;
+    server_opts.help = 0;
+    server_opts.exec_path = strdup(wineserver_path);
+    server_opts.make_wrapper = NULL;
+    server_opts.config = NULL;
+    server_opts.wineserver = NULL;
+
+    if (!server_opts.exec_path)
+        return -1;
+
+    /* Create the config name: append "server" to the base name */
+    server_config_name = strdup(config_name);
+    if (!server_config_name) {
+        free(server_opts.exec_path);
+        return -1;
+    }
+    append_sep(server_config_name, "", "server");
+
+    /* Create the wineserver config file */
+    if (create_config_file(server_config_name, &server_opts) != 0) {
+        fprintf(stderr, "Error: Failed to create wineserver config file\n");
+        ret = -1;
+        goto cleanup;
+    }
+
+    /* Create the wineserver symlink */
+    if (create_symlink(server_config_name) != 0) {
+        fprintf(stderr, "Error: Failed to create wineserver symlink\n");
+        ret = -1;
+        goto cleanup;
+    }
+
+    printf("Created wineserver wrapper: yawl-%s\n", server_config_name);
+
+cleanup:
+    free(server_opts.exec_path);
+    free(server_config_name);
+    return ret;
+}
+
 /* Create a wrapper configuration and symlink */
 static int create_wrapper(const char *config_name, const struct options *opts) {
     if (create_config_file(config_name, opts) != 0)
@@ -565,6 +629,10 @@ static int create_wrapper(const char *config_name, const struct options *opts) {
 
     if (create_symlink(config_name) != 0)
         return -1;
+
+    if (opts->wineserver)
+        if (create_wineserver_wrapper(config_name, opts->wineserver) != 0)
+            fprintf(stderr, "Warning: Failed to create wineserver wrapper. Continuing with main wrapper only.\n");
 
     return 0;
 }
@@ -734,6 +802,30 @@ int main(int argc, char *argv[]) {
     if (mesa_paths) {
         setenv("LIBGL_DRIVERS_PATH", mesa_paths, 1);
         free(mesa_paths);
+    }
+
+    if (opts.exec_path && strcmp(opts.exec_path, DEFAULT_EXEC_PATH) != 0) {
+        char *exec_dir = strdup(opts.exec_path);
+        if (exec_dir) {
+            char *last_slash = strrchr(exec_dir, '/');
+            if (last_slash) {
+                *last_slash = '\0';
+
+                const char *orig_path = getenv("PATH");
+                char *new_path = NULL;
+
+                if (orig_path)
+                    append_sep(new_path, ":", exec_dir, orig_path);
+                else
+                    new_path = strdup(exec_dir);
+
+                if (new_path) {
+                    setenv("PATH", new_path, 1);
+                    free(new_path);
+                }
+            }
+            free(exec_dir);
+        }
     }
 
     if (prctl(PR_SET_CHILD_SUBREAPER, 1UL, 0UL, 0UL, 0UL) == -1)
