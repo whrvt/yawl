@@ -58,3 +58,9 @@ int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len)
    Returns a newly allocated string that must be freed by the caller
    Returns NULL on failure */
 char *expand_path(const char *path);
+
+/* A helper to extract an archive from `archive_path` to `extract_path` with libarchive */
+int extract_archive(const char *archive_path, const char *extract_path);
+
+/* A helper to download a file from `url` to `output_path` with libcurl */
+int download_file(const char *url, const char *output_path);
