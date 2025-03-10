@@ -42,7 +42,7 @@
     "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION "/snapshots/latest-container-runtime-public-beta"
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
 #define RUNTIME_ARCHIVE_NAME RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
-#define RUNTIME_MTREE_NAME "com.valvesoftware.SteamRuntime.Platform-amd64%2Ci386-" RUNTIME_VERSION "-runtime.mtree.gz"
+#define RUNTIME_ARCHIVE_HASH_URL RUNTIME_BASE_URL "/SHA256SUMS"
 
 struct options {
     int verify;    /* 0 = no verification (default), 1 = verify */
@@ -57,7 +57,7 @@ static void print_usage(void) {
     printf("Usage: " PROG_NAME " [options] [-- wine_args...]\n");
     printf("Options:\n");
     printf("  --verify       Verify the runtime before running (default: only verify after install)\n"
-"                            Also can be used to check for runtime updates (updating will be a separate option in the future)\n");
+"                 Also can be used to check for runtime updates (updating will be a separate option in the future)\n");
     printf("  --reinstall    Force reinstallation of the runtime\n");
     printf("  --help         Display this help and exit\n");
     printf("\n");
@@ -198,7 +198,7 @@ static int download_file(const char *url, const char *output_path) {
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
-        fprintf(stderr, "curl error: %s\n", curl_easy_strerror(res));
+        fprintf(stderr, "Failed to download %s, curl error: %s\n", url, curl_easy_strerror(res));
         return -1;
     }
 
@@ -315,26 +315,20 @@ static int verify_runtime(const char *runtime_path) {
 }
 
 static int get_hash_from_sha256sums(const char *file_name, char *hash_str, size_t hash_str_len) {
-    char *url = NULL;
     char *sums_path = NULL;
     FILE *fp = NULL;
     char line[200];
     int found = 0;
 
-    join_paths(url, RUNTIME_BASE_URL, "SHA256SUMS");
     join_paths(sums_path, g_yawl_dir, "SHA256SUMS");
 
-    if (download_file(url, sums_path) != 0) {
-        fprintf(stderr, "Error: Failed to download SHA256SUMS file\n");
-        free(url);
+    if (download_file(RUNTIME_ARCHIVE_HASH_URL, sums_path) != 0) {
         free(sums_path);
         return -1;
     }
 
     fp = fopen(sums_path, "r");
     if (!fp) {
-        fprintf(stderr, "Error: Failed to open SHA256SUMS file\n");
-        free(url);
         free(sums_path);
         return -1;
     }
@@ -361,7 +355,6 @@ static int get_hash_from_sha256sums(const char *file_name, char *hash_str, size_
     }
 
     fclose(fp);
-    free(url);
     free(sums_path);
 
     return found ? 0 : -1;
