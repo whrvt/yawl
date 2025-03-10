@@ -49,7 +49,6 @@ struct options {
     char *wineserver;   /* Path to the wineserver binary (NULL = don't create wineserver wrapper) */
 };
 
-static char *g_top_data_dir;
 static char *g_yawl_dir;
 static char *g_config_dir;
 
@@ -162,21 +161,17 @@ static int parse_env_options(struct options *opts) {
     return 0;
 }
 
-static char *setup_data_dir(void) {
+static char *setup_install_dir(void) {
     char *result = NULL;
-    const char *temp_dir = getenv("XDG_DATA_HOME");
-    if (!temp_dir) {
-        if (!(temp_dir = getenv("HOME"))) {
-            struct passwd *pw = getpwuid(getuid());
-            if (!(pw && (temp_dir = pw->pw_dir)))
-                return NULL;
-        }
-        join_paths(result, temp_dir, ".local/share");
-    } else
-        result = strdup(temp_dir);
+    struct passwd *pw;
 
-    if (access(result, W_OK) != 0)
-        return NULL;
+    const char *temp_dir = getenv("YAWL_INSTALL_DIR");
+    if (temp_dir)
+        result = expand_path(temp_dir);
+    else if ((temp_dir = getenv("XDG_DATA_HOME")))
+        join_paths(result, temp_dir, PROG_NAME);
+    else if ((temp_dir = getenv("HOME")) || ((pw = getpwuid(getuid())) && (temp_dir = pw->pw_dir)))
+        join_paths(result, temp_dir, ".local/share/" PROG_NAME);
 
     return result;
 }
@@ -721,15 +716,13 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    g_top_data_dir = setup_data_dir();
-    if (!g_top_data_dir) {
-        fprintf(stderr, "Error: Failed to get a path to a usable data directory. Exiting.\n");
+    if (!(g_yawl_dir = setup_install_dir())) {
+        fprintf(stderr, "Error: The program directory is unusable: %s\n", strerror(errno));
         return 1;
     }
 
-    join_paths(g_yawl_dir, g_top_data_dir, PROG_NAME);
     if (ensure_dir(g_yawl_dir) != 0) {
-        fprintf(stderr, "Error: The program directory (%s) is unusable. Exiting.\n", g_yawl_dir);
+        fprintf(stderr, "Error: The program directory (%s) could not be created: %s\n", g_yawl_dir, strerror(errno));
         return 1;
     }
 

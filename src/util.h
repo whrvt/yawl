@@ -45,7 +45,9 @@ void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, .
 /* Join paths with a `/` separator into the first argument (`result`) */
 #define join_paths(result, ...) append_sep(result, "/", __VA_ARGS__)
 
-/* Ensure a directory exists and is writable, creating it if necessary */
+/* Ensure a directory exists and is writable, creating it if necessary
+ * Will create parent directories as needed (like mkdir -p)
+ * Returns 0 on success, -1 on error */
 int ensure_dir(const char *path);
 
 /* Does what it looks like */
@@ -55,8 +57,8 @@ int remove_dir(const char *path);
 int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len);
 
 /* Expands shell paths like ~ to their full equivalents (using wordexp)
-   Returns a newly allocated string that must be freed by the caller
-   Returns NULL on failure */
+ * Returns a newly allocated string that must be freed by the caller
+ * Returns NULL on failure */
 char *expand_path(const char *path);
 
 /* A helper to extract an archive from `archive_path` to `extract_path` with libarchive */

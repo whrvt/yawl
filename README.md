@@ -27,6 +27,12 @@ Current useful environment variables:
   - `YAWL_VERBS="exec=/opt/wine/bin/wine64" yawl explorer.exe`
   - `YAWL_VERBS="exec=/opt/firefox/firefox" yawl`
 
+- `YAWL_INSTALL_DIR`: Override the default installation directory of `$XDG_DATA_HOME/yawl` or `$HOME/.local/share/yawl`
+  - Do note that this setting is "volatile", it's not stored anywhere. It must be passed on each subsequent invocation to use the same install directory.
+
+  Example:
+  - `YAWL_INSTALL_DIR="$HOME/programs/winelauncher" yawl`
+
 - Other environment variables are passed through as usual.
 
 ## Using Wrappers

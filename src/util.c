@@ -76,15 +76,92 @@ void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, .
     va_end(args);
 }
 
-int ensure_dir(const char *path) {
-    struct stat st;
-    if (!stat(path, &st)) {
-        if (S_ISDIR(st.st_mode))
-            return access(path, W_OK);
-        else
-            return -1;
+char *expand_path(const char *path) {
+    if (!path)
+        return NULL;
+
+    /* Fast path for paths that don't need expansion */
+    if (!strchr(path, '~') && !strchr(path, '$'))
+        return strdup(path);
+
+    wordexp_t p;
+    char *result = NULL;
+
+    /* Use wordexp to handle path expansion like the shell would */
+    int ret = wordexp(path, &p, WRDE_NOCMD);
+    if (ret != 0) {
+        /* Handle specific error cases */
+        if (ret == WRDE_BADCHAR)
+            fprintf(stderr, "Warning: Invalid characters in path: %s\n", path);
+        else if (ret == WRDE_SYNTAX)
+            fprintf(stderr, "Warning: Syntax error in path: %s\n", path);
+
+        /* Fall back to the original path */
+        return strdup(path);
     }
-    return mkdir(path, 0755);
+
+    /* We should have exactly one expansion result */
+    if (p.we_wordc == 1) {
+        result = strdup(p.we_wordv[0]);
+    } else {
+        /* If we get multiple results or none, fall back to the original path */
+        fprintf(stderr, "Warning: Ambiguous path expansion for: %s\n", path);
+        result = strdup(path);
+    }
+
+    wordfree(&p);
+    return result;
+}
+
+static int create_directory_tree(char *path) {
+    /* Skip leading slashes */
+    char *p = path;
+    if (*p == '/')
+        p++;
+
+    while (*p) {
+        if (*p == '/') {
+            *p = '\0';
+            if (mkdir(path, 0755) != 0 && errno != EEXIST) {
+                *p = '/';
+                return -1;
+            }
+            *p = '/';
+        }
+        p++;
+    }
+
+    /* Create the final directory */
+    return (mkdir(path, 0755) != 0 && errno != EEXIST) ? -1 : 0;
+}
+
+int ensure_dir(const char *path) {
+    if (!path)
+        return -1;
+
+    char *expanded_path = expand_path(path);
+    if (!expanded_path)
+        return -1;
+
+    int ret = -1;
+    struct stat st;
+    if (stat(expanded_path, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) {
+            ret = access(expanded_path, W_OK);
+            goto ensure_done;
+        } else {
+            /* Path exists but is not a directory */
+            errno = ENOTDIR;
+            goto ensure_done;
+        }
+    }
+
+    /* Directory doesn't exist, create it (recursively) */
+    ret = create_directory_tree(expanded_path);
+
+ensure_done:
+    free(expanded_path);
+    return ret;
 }
 
 int remove_dir(const char *path) {
@@ -187,43 +264,6 @@ int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len)
 
     hash_str[hash_str_len - 1] = '\0';
     return 0;
-}
-
-char *expand_path(const char *path) {
-    if (!path)
-        return NULL;
-
-    /* Fast path for paths that don't need expansion */
-    if (!strchr(path, '~') && !strchr(path, '$'))
-        return strdup(path);
-
-    wordexp_t p;
-    char *result = NULL;
-
-    /* Use wordexp to handle path expansion like the shell would */
-    int ret = wordexp(path, &p, WRDE_NOCMD);
-    if (ret != 0) {
-        /* Handle specific error cases */
-        if (ret == WRDE_BADCHAR)
-            fprintf(stderr, "Warning: Invalid characters in path: %s\n", path);
-        else if (ret == WRDE_SYNTAX)
-            fprintf(stderr, "Warning: Syntax error in path: %s\n", path);
-
-        /* Fall back to the original path */
-        return strdup(path);
-    }
-
-    /* We should have exactly one expansion result */
-    if (p.we_wordc == 1) {
-        result = strdup(p.we_wordv[0]);
-    } else {
-        /* If we get multiple results or none, fall back to the original path */
-        fprintf(stderr, "Warning: Ambiguous path expansion for: %s\n", path);
-        result = strdup(path);
-    }
-
-    wordfree(&p);
-    return result;
 }
 
 int download_file(const char *url, const char *output_path) {
