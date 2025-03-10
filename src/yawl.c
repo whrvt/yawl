@@ -102,11 +102,14 @@ static int parse_env_options(struct options *opts) {
             opts->help = 1;
         else if (strncmp(token, "exec=", 5) == 0) {
             free(opts->exec_path);
-            opts->exec_path = strdup(token + 5);
-            if (!opts->exec_path) {
+
+            char *expanded_path = expand_path(token + 5);
+            if (!expanded_path) {
                 free(verbs_copy);
                 return -1;
             }
+
+            opts->exec_path = expanded_path;
         } else
             fprintf(stderr, "Warning: Unknown YAWL_VERBS token: %s\n", token);
 
