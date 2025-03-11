@@ -2,10 +2,10 @@ AUTOMAKE_OPTIONS = foreign
 
 bin_PROGRAMS = yawl
 
-yawl_SOURCES = src/yawl.c src/util.c
+yawl_SOURCES = src/yawl.c src/util.c src/apparmor.c
 yawl_CFLAGS  = $(LIBUNISTRING_CFLAGS) $(LIBIDN2_CFLAGS) $(LIBPSL_CFLAGS) $(LIBZ_CFLAGS) \
 				$(LIBLZMA_CFLAGS) $(LIBZSTD_CFLAGS) $(LIBARCHIVE_CFLAGS) $(OPENSSL_CFLAGS) $(CURL_CFLAGS) \
-				-Wall -Werror -Wextra -Wpedantic
+				-Wall -Werror -Wextra -Wpedantic -std=gnu17 -fwrapv -fno-strict-aliasing
 yawl_LDFLAGS = -static -static-libgcc
 yawl_LDADD = $(LIBUNISTRING_LIBS) $(LIBIDN2_LIBS) $(LIBPSL_LIBS) $(LIBZ_LIBS) $(LIBLZMA_LIBS) \
 			 $(LIBZSTD_LIBS) $(LIBARCHIVE_LIBS) $(OPENSSL_LIBS) $(CURL_LIBS) $(PTHREAD_EXTLIBS)

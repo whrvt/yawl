@@ -30,6 +30,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#define PROG_NAME "yawl"
+
 #define BUFFER_SIZE 8192
 
 void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, ...);
@@ -69,3 +71,6 @@ int download_file(const char *url, const char *output_path);
 
 /* Extract the base name from a given executable path */
 char *get_base_name(const char *path);
+
+/* Helper to find the shared directory for the yawl installation */
+const char *get_yawl_dir(void);

@@ -24,20 +24,23 @@
 #include <stdint.h>
 #include <sys/prctl.h>
 
+#include "apparmor.h"
 #include "util.h"
 
-#define PROG_NAME "yawl"
-
 #define RUNTIME_VERSION "sniper"
+#define RUNTIME_PREFIX "SteamLinuxRuntime_"
+
 #define RUNTIME_BASE_URL                                                                                               \
     "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION "/snapshots/latest-container-runtime-public-beta"
-#define RUNTIME_PREFIX "SteamLinuxRuntime_"
 #define RUNTIME_ARCHIVE_NAME RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
 #define RUNTIME_ARCHIVE_HASH_URL RUNTIME_BASE_URL "/SHA256SUMS"
 
 #define DEFAULT_EXEC_PATH "/usr/bin/wine"
 #define CONFIG_DIR "configs"
 #define CONFIG_EXTENSION ".cfg"
+
+static char *g_yawl_dir;
+static char *g_config_dir;
 
 struct options {
     int verify;         /* 0 = no verification (default), 1 = verify */
@@ -48,9 +51,6 @@ struct options {
     char *config;       /* Name of the config to use (NULL = use argv[0] or default) */
     char *wineserver;   /* Path to the wineserver binary (NULL = don't create wineserver wrapper) */
 };
-
-static char *g_yawl_dir;
-static char *g_config_dir;
 
 static void print_usage(void) {
     printf("Usage: " PROG_NAME " [args_for_executable...]\n");
@@ -173,7 +173,16 @@ static char *setup_install_dir(void) {
     else if ((temp_dir = getenv("HOME")) || ((pw = getpwuid(getuid())) && (temp_dir = pw->pw_dir)))
         join_paths(result, temp_dir, ".local/share/" PROG_NAME);
 
+    if (ensure_dir(result) != 0)
+        free(result);
+
     return result;
+}
+
+const char *get_yawl_dir(void) {
+    if (g_yawl_dir)
+        return g_yawl_dir;
+    return (g_yawl_dir = setup_install_dir());
 }
 
 static int verify_runtime(const char *runtime_path) {
@@ -223,8 +232,23 @@ static int verify_runtime(const char *runtime_path) {
         return -1;
     }
 
+    char *entry_point = NULL;
+    join_paths(entry_point, get_yawl_dir(), RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    if (access(entry_point, X_OK) != 0) {
+        fprintf(stderr, "Error: Runtime entry point not found: %s\n", entry_point);
+        free(entry_point);
+        return -1;
+    }
+
+    /* Check and fix AppArmor issues if needed */
+    if (handle_apparmor(entry_point) != 0) {
+        fprintf(stderr, "Warning: AppArmor issues detected but couldn't be fully resolved.\n");
+        fprintf(stderr, "The program will continue, but may not work correctly.\n");
+    }
+
     printf("Runtime verification completed successfully.\n");
     free(pv_verify_path);
+    free(entry_point);
     return 0;
 }
 
@@ -234,7 +258,7 @@ static int get_hash_from_sha256sums(const char *file_name, char *hash_str, size_
     char line[200];
     int found = 0;
 
-    join_paths(sums_path, g_yawl_dir, "SHA256SUMS");
+    join_paths(sums_path, get_yawl_dir(), "SHA256SUMS");
 
     if (download_file(RUNTIME_ARCHIVE_HASH_URL, sums_path) != 0) {
         free(sums_path);
@@ -279,8 +303,8 @@ static int setup_runtime(const struct options *opts) {
     char *archive_path = NULL, *runtime_path = NULL;
     struct stat st;
 
-    join_paths(archive_path, g_yawl_dir, RUNTIME_ARCHIVE_NAME);
-    join_paths(runtime_path, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
+    join_paths(archive_path, get_yawl_dir(), RUNTIME_ARCHIVE_NAME);
+    join_paths(runtime_path, get_yawl_dir(), RUNTIME_PREFIX RUNTIME_VERSION);
 
     /* Determine if we need to extract and/or verify the runtime */
     if (opts->reinstall) {
@@ -340,7 +364,7 @@ static int setup_runtime(const struct options *opts) {
 
     /* Extract the runtime */
     printf("Extracting runtime...\n");
-    ret = extract_archive(archive_path, g_yawl_dir);
+    ret = extract_archive(archive_path, get_yawl_dir());
     if (ret != 0) {
         fprintf(stderr, "Error: Failed to extract runtime\n");
         goto setup_done;
@@ -364,7 +388,7 @@ static int setup_runtime(const struct options *opts) {
                     goto setup_done;
 
                 printf("Extracting runtime...\n");
-                ret = extract_archive(archive_path, g_yawl_dir);
+                ret = extract_archive(archive_path, get_yawl_dir());
                 if (ret != 0) {
                     fprintf(stderr, "Error: Failed to extract runtime on retry\n");
                     goto setup_done;
@@ -716,18 +740,13 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    if (!(g_yawl_dir = setup_install_dir())) {
+    if (!get_yawl_dir()) {
         fprintf(stderr, "Error: The program directory is unusable: %s\n", strerror(errno));
         return 1;
     }
 
-    if (ensure_dir(g_yawl_dir) != 0) {
-        fprintf(stderr, "Error: The program directory (%s) could not be created: %s\n", g_yawl_dir, strerror(errno));
-        return 1;
-    }
-
     /* Set up config directory */
-    join_paths(g_config_dir, g_yawl_dir, CONFIG_DIR);
+    join_paths(g_config_dir, get_yawl_dir(), CONFIG_DIR);
 
     /* Handle make_wrapper option */
     if (opts.make_wrapper) {
@@ -768,10 +787,10 @@ int main(int argc, char *argv[]) {
     }
 
     char *entry_point = NULL;
-    join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, get_yawl_dir(), RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
     if (access(entry_point, X_OK) != 0) {
         fprintf(stderr, "Error: Runtime entry point not found: %s\n", entry_point);
-        return 1;
+        return -1;
     }
 
     char **new_argv = calloc(argc + 4, sizeof(char *));
