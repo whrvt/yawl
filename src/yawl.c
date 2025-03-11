@@ -790,7 +790,7 @@ int main(int argc, char *argv[]) {
     join_paths(entry_point, get_yawl_dir(), RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
     if (access(entry_point, X_OK) != 0) {
         fprintf(stderr, "Error: Runtime entry point not found: %s\n", entry_point);
-        return -1;
+        return 1;
     }
 
     char **new_argv = calloc(argc + 4, sizeof(char *));
