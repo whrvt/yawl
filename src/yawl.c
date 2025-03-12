@@ -760,7 +760,7 @@ int main(int argc, char *argv[]) {
     }
 
     result = log_init();
-    if (FAILED(result))
+    if (FAILED(result) && (RESULT_CODE(result) != E_CANCELED))
         fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
 
     LOG_DEBUG("yawl directories initialized - g_yawl_dir: %s, g_config_dir: %s", g_yawl_dir, g_config_dir);

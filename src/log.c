@@ -50,19 +50,20 @@ static log_level_t parse_log_level(const char *level_str) {
     if (!level_copy)
         return LOG_INFO;
 
-    for (char *p = level_copy; *p; p++)
+    unsigned long pos = 0;
+    for (char *p = level_copy; *p && pos++ < sizeof("warning"); p++)
         *p = tolower(*p);
 
     log_level_t level = LOG_INFO;
-    if (strcmp(level_copy, "none") == 0)
+    if (strncmp(level_copy, "none", sizeof("none")) == 0)
         level = LOG_NONE;
-    else if (strcmp(level_copy, "error") == 0)
+    else if (strncmp(level_copy, "error", sizeof("error")) == 0)
         level = LOG_ERROR;
-    else if (strcmp(level_copy, "warning") == 0)
+    else if (strncmp(level_copy, "warning", sizeof("warning")) == 0)
         level = LOG_WARNING;
-    else if (strcmp(level_copy, "info") == 0)
+    else if (strncmp(level_copy, "info", sizeof("info")) == 0)
         level = LOG_INFO;
-    else if (strcmp(level_copy, "debug") == 0)
+    else if (strncmp(level_copy, "debug", sizeof("debug")) == 0)
         level = LOG_DEBUG;
 
     free(level_copy);
@@ -76,6 +77,9 @@ RESULT log_init(void) {
     const char *log_level_env = getenv("YAWL_LOG_LEVEL");
     if (log_level_env)
         log_set_level(parse_log_level(log_level_env));
+
+    if (current_log_level == LOG_NONE)
+        return MAKE_RESULT(SEV_SUCCESS, CAT_CONFIG, E_CANCELED);
 
     const char *log_file_env = getenv("YAWL_LOG_FILE");
     if (log_file_env)
