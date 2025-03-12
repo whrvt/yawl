@@ -14,6 +14,7 @@ Also, the static link libraries (curl, zlib) are included, but can be rebuilt wi
 
 Current useful environment variables:
 - `YAWL_VERBS`: Semicolon-separated list of verbs to control yawl behavior:
+  - `version`: Just print the version of yawl and exit
   - `verify`: Verify the runtime before running
   - `reinstall`: Force reinstallation of the runtime
   - `help`: Display help and exit
@@ -31,7 +32,7 @@ Current useful environment variables:
   - Do note that this setting is "volatile", it's not stored anywhere. It must be passed on each subsequent invocation to use the same install directory.
 
   Example:
-  - `YAWL_INSTALL_DIR="$HOME/programs/winelauncher" yawl`
+  - `YAWL_INSTALL_DIR="$HOME/programs/winelauncher;reinstall" yawl`
 
 - Other environment variables are passed through as usual.
 

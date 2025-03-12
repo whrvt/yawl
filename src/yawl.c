@@ -19,6 +19,9 @@
  */
 
 #define _GNU_SOURCE
+
+#include "config.h"
+
 #include <getopt.h>
 #include <pwd.h>
 #include <stdint.h>
@@ -43,6 +46,7 @@ static char *g_yawl_dir;
 static char *g_config_dir;
 
 struct options {
+    int version;
     int verify;         /* 0 = no verification (default), 1 = verify */
     int reinstall;      /* 0 = don't reinstall unless needed, 1 = force reinstall */
     int help;           /* 0 = don't show help, 1 = show help and exit */
@@ -57,6 +61,7 @@ static void print_usage(void) {
     printf("\n");
     printf("Environment variables:\n");
     printf("  YAWL_VERBS       Semicolon-separated list of verbs to control yawl behavior:\n");
+    printf("                   - 'version'   Just print the version of yawl and exit\n");
     printf("                   - 'verify'    Verify the runtime before running (default: only verify after install)\n");
     printf("                                 Also can be used to check for runtime updates (will be a separate option "
            "in the future)\n");
@@ -67,14 +72,17 @@ static void print_usage(void) {
     printf("                   - 'make_wrapper=NAME' Create a wrapper configuration and symlink\n");
     printf("                   - 'config=NAME' Use a specific configuration file\n");
     printf("                   - 'wineserver=PATH' Set the wineserver executable path when creating a wrapper\n");
-    printf("                   Example: YAWL_VERBS=\"verify;reinstall\" " PROG_NAME " winecfg\n");
-    printf("                   Example: YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" " PROG_NAME " winecfg\n");
-    printf("                   Example: YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" " PROG_NAME
-           "\n");
     printf(
         "                   Example: "
         "YAWL_VERBS=\"make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver\" " PROG_NAME
         "\n");
+    printf("                   Example: YAWL_VERBS=\"verify;reinstall\" " PROG_NAME " winecfg\n");
+    printf("                   Example: YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" " PROG_NAME " winecfg\n");
+    printf("                   Example: YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" " PROG_NAME
+           "\n\n");
+    printf("  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/" PROG_NAME
+           " or $HOME/.local/share/" PROG_NAME "\n");
+    printf("                   Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher;reinstall\" yawl\n");
 }
 
 /* Parse a single option string and update the options structure */
@@ -82,7 +90,9 @@ static int parse_option(const char *option, struct options *opts) {
     if (!option || !opts || !option[0])
         return 0; /* Skip empty options, not an error */
 
-    if (strncmp(option, "verify", 6) == 0) {
+    if (strncmp(option, "version", 7) == 0) {
+        opts->version = 1;
+    } else if (strncmp(option, "verify", 6) == 0) {
         opts->verify = 1;
     } else if (strncmp(option, "reinstall", 9) == 0) {
         opts->reinstall = 1;
@@ -123,6 +133,7 @@ static int parse_option(const char *option, struct options *opts) {
 }
 
 static int parse_env_options(struct options *opts) {
+    opts->version = 0;
     opts->verify = 0;
     opts->reinstall = 0;
     opts->help = 0;
@@ -173,8 +184,10 @@ static char *setup_install_dir(void) {
     else if ((temp_dir = getenv("HOME")) || ((pw = getpwuid(getuid())) && (temp_dir = pw->pw_dir)))
         join_paths(result, temp_dir, ".local/share/" PROG_NAME);
 
-    if (ensure_dir(result) != 0)
+    if (ensure_dir(result) != 0) {
+        fprintf(stderr, "Error: The program directory (%s) could not be created: %s\n", result, strerror(errno));
         free(result);
+    }
 
     return result;
 }
@@ -519,6 +532,7 @@ static int create_config_file(const char *config_name, const struct options *opt
     }
 
     /* Write the current configuration */
+    /* TODO: probably should rethink adding verify/reinstall to .cfgs, and maybe support adding PATHs */
     if (opts->verify)
         fprintf(fp, "verify\n");
     if (opts->reinstall)
@@ -733,6 +747,11 @@ int main(int argc, char *argv[]) {
     if (parse_env_options(&opts) != 0) {
         fprintf(stderr, "Error: Failed to parse options. Exiting.\n");
         return 1;
+    }
+
+    if (opts.version) {
+        printf(VERSION "\n");
+        return 0;
     }
 
     if (opts.help) {
