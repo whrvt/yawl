@@ -30,13 +30,12 @@
 #include "apparmor.h"
 #include "util.h"
 
-#define RUNTIME_VERSION "sniper"
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
+#define RUNTIME_VERSION "sniper"
+#define RUNTIME_ARCHIVE_NAME RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
 
 #define RUNTIME_BASE_URL                                                                                               \
     "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION "/snapshots/latest-container-runtime-public-beta"
-#define RUNTIME_ARCHIVE_NAME RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
-#define RUNTIME_ARCHIVE_HASH_URL RUNTIME_BASE_URL "/SHA256SUMS"
 
 #define DEFAULT_EXEC_PATH "/usr/bin/wine"
 #define CONFIG_DIR "configs"
@@ -82,7 +81,8 @@ static void print_usage(void) {
            "\n\n");
     printf("  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/" PROG_NAME
            " or $HOME/.local/share/" PROG_NAME "\n");
-    printf("                   Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher\" YAWL_VERBS=\"reinstall\" yawl\n");
+    printf(
+        "                   Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher\" YAWL_VERBS=\"reinstall\" yawl\n");
 }
 
 /* Parse a single option string and update the options structure */
@@ -265,163 +265,93 @@ static int verify_runtime(const char *runtime_path) {
     return 0;
 }
 
-static int get_hash_from_sha256sums(const char *file_name, char *hash_str, size_t hash_str_len) {
-    char *sums_path = NULL;
-    FILE *fp = NULL;
-    char line[200];
-    int found = 0;
+static int verify_slr_hash(const char *archive_path, const char *local_shasum_path) {
+    char expected_hash[65] = {0};
+    char actual_hash[65] = {0};
 
-    join_paths(sums_path, get_yawl_dir(), "SHA256SUMS");
-
-    if (download_file(RUNTIME_ARCHIVE_HASH_URL, sums_path) != 0) {
-        free(sums_path);
+    if (get_online_slr_hash(RUNTIME_ARCHIVE_NAME, local_shasum_path, expected_hash, sizeof(expected_hash)) != 0) {
+        fprintf(stderr, "Warning: Unexpected error while trying to obtain the hash from the SHA256SUMS file.\n");
+        fprintf(stderr, "Warning: Proceeding with unverified archive.");
+        return 0;
+    } else if (calculate_sha256(archive_path, actual_hash, sizeof(actual_hash)) != 0) {
+        fprintf(stderr, "Error: Could not calculate hash.\n");
+        return -1;
+    } else if (strcmp(expected_hash, actual_hash) != 0) {
+        fprintf(stderr, "Error: Archive hash mismatch.\n");
         return -1;
     }
-
-    fp = fopen(sums_path, "r");
-    if (!fp) {
-        free(sums_path);
-        return -1;
-    }
-
-    while (fgets(line, sizeof(line), fp)) {
-        /* Format is "hash *filename" */
-        char *hash_end = strchr(line, ' ');
-        if (!hash_end)
-            continue;
-
-        *hash_end = '\0';
-        char *file = hash_end + 2; /* Skip " *" */
-
-        char *newline = strchr(file, '\n');
-        if (newline)
-            *newline = '\0';
-
-        if (strcmp(file, file_name) == 0) {
-            strncpy(hash_str, line, hash_str_len - 1);
-            hash_str[hash_str_len - 1] = '\0';
-            found = 1;
-            break;
-        }
-    }
-
-    fclose(fp);
-    free(sums_path);
-
-    return found ? 0 : -1;
+    return 0;
 }
 
 static int setup_runtime(const struct options *opts) {
-    int ret = 0, need_extraction = 0, need_verification = 0;
+    /* Reinstall obviously implies verify */
+    int ret = 0, install = opts->reinstall, verify = (opts->verify || opts->reinstall);
     char *archive_path = NULL, *runtime_path = NULL;
     struct stat st;
 
     join_paths(archive_path, get_yawl_dir(), RUNTIME_ARCHIVE_NAME);
     join_paths(runtime_path, get_yawl_dir(), RUNTIME_PREFIX RUNTIME_VERSION);
 
-    /* Determine if we need to extract and/or verify the runtime */
-    if (opts->reinstall) {
-        need_extraction = 1;
-        need_verification = opts->verify;
-    } else if (stat(runtime_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
-        /* Runtime doesn't exist, we need to extract */
-        need_extraction = 1;
-        /* Always verify a fresh installation */
-        need_verification = 1;
-    } else if (opts->verify) {
-        /* Runtime exists but verification is explicitly requested */
-        printf("Verifying existing runtime integrity...\n");
-        ret = verify_runtime(runtime_path);
-        if (ret != 0) {
-            fprintf(stderr, "Warning: Runtime verification failed. Reinstalling...\n");
+    if (!(stat(runtime_path, &st) == 0 && S_ISDIR(st.st_mode))) {
+        fprintf(stderr, "Installing runtime...\n");
+        install = 1;
+    } else if (install) {
+        fprintf(stderr, "Reinstalling runtime...\n");
+        remove_dir(runtime_path);
+        unlink(archive_path);
+    } else if (verify) {
+        printf("Verifying existing runtime folder integrity...\n");
+        if ((ret = verify_runtime(runtime_path)) != 0) {
             remove_dir(runtime_path);
-            need_extraction = 1;
-            need_verification = 1;
+            fprintf(stderr, "Reinstalling corrupt runtime folder...\n");
+            install = 1;
         }
+        /* else we'll skip reinstallation if verification succeeded. */
     }
 
-    /* If we don't need to extract, we're done */
-    if (!need_extraction)
-        goto setup_done;
-
-    /* Check if we need to download the archive */
-    int archive_exists = (stat(archive_path, &st) == 0 && S_ISREG(st.st_mode));
-
-    if (!archive_exists || opts->reinstall) {
-        printf("Downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
-        if ((ret = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path)) != 0)
-            goto setup_done;
-        archive_exists = 1;
-    }
-
-    /* Always verify the archive hash before extraction */
-    if (archive_exists) {
-        printf("Verifying local runtime archive integrity...\n");
-        char expected_hash[65] = {0};
-        char actual_hash[65] = {0};
-
-        if (get_hash_from_sha256sums(RUNTIME_ARCHIVE_NAME, expected_hash, sizeof(expected_hash)) != 0) {
-            fprintf(stderr, "Warning: Could not get expected hash. Continuing anyway.\n");
-        } else if (calculate_sha256(archive_path, actual_hash, sizeof(actual_hash)) != 0) {
-            fprintf(stderr, "Warning: Could not calculate hash. Re-downloading archive.\n");
-            if ((ret = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path)) != 0)
-                goto setup_done;
-        } else if (strcmp(expected_hash, actual_hash) != 0) {
-            fprintf(stderr, "Warning: Archive hash mismatch. Re-downloading.\n");
-            if ((ret = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path)) != 0)
-                goto setup_done;
-        } else {
-            printf("Archive hash verified.\n");
-        }
-    }
-
-    /* Extract the runtime */
-    printf("Extracting runtime...\n");
-    ret = extract_archive(archive_path, get_yawl_dir());
-    if (ret != 0) {
-        fprintf(stderr, "Error: Failed to extract runtime\n");
-        goto setup_done;
-    }
-
-    /* Verify the runtime if needed */
-    if (need_verification) {
-        printf("Verifying runtime integrity...\n");
-        ret = verify_runtime(runtime_path);
-        if (ret != 0) {
-            fprintf(stderr, "Warning: Runtime verification failed after extraction.\n");
-
-            /* One retry - redownload and extract again */
-            if (!opts->reinstall) {
-                fprintf(stderr, "Attempting one more time with a fresh download...\n");
+    /* Needs to be reinstalled because of: option, failed verification, or fresh install */
+    if (install) {
+        int attempt = 0, success = -1;
+        do {
+            if (success == 0)
+                break;
+            if (++attempt > 2) {
+                fprintf(stderr, "Error: Runtime verification failed after retrying.\n");
+                break;
+            }
+            if (attempt == 2) {
+                fprintf(stderr, "Warning: Previous attempt failed, trying one more time...\n");
                 remove_dir(runtime_path);
                 unlink(archive_path);
-
-                printf("Downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
-                if ((ret = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path)) != 0)
-                    goto setup_done;
-
-                printf("Extracting runtime...\n");
-                ret = extract_archive(archive_path, get_yawl_dir());
-                if (ret != 0) {
-                    fprintf(stderr, "Error: Failed to extract runtime on retry\n");
-                    goto setup_done;
-                }
-
-                printf("Verifying runtime integrity (final attempt)...\n");
-                ret = verify_runtime(runtime_path);
-                if (ret != 0) {
-                    fprintf(stderr, "Error: Runtime verification failed after retrying. Continuing anyway...\n");
-                    ret = 0;
-                }
-            } else {
-                /* If we're already doing a reinstall, don't retry again */
-                fprintf(stderr, "Continuing despite verification failure...\n");
-                ret = 0;
             }
-        }
+
+            int download = 0;
+            if (!(stat(archive_path, &st) == 0 && S_ISREG(st.st_mode))) {
+                printf("Downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
+                download = 1;
+            } else {
+                printf("Verifying existing runtime archive integrity...\n");
+                if (verify_slr_hash(archive_path, RUNTIME_BASE_URL "/SHA256SUMS") != 0) {
+                    download = 1;
+                    unlink(archive_path);
+                    printf("Re-downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
+                }
+            }
+
+            if (download && (success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path) != 0))
+                continue;
+
+            printf("Extracting runtime...\n");
+            if ((success = extract_archive(archive_path, get_yawl_dir())) != 0)
+                continue;
+
+            printf("Verifying runtime folder integrity...\n");
+            if ((success = verify_runtime(runtime_path)) != 0)
+                continue;
+        } while (1);
+        ret = success;
     }
 
-setup_done:
     free(archive_path);
     free(runtime_path);
 

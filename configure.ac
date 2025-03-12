@@ -1,4 +1,4 @@
-AC_INIT([yawl], [0.5.3], [william@horvath.blog])
+AC_INIT([yawl], [0.5.4], [william@horvath.blog])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_SRCDIR([src/yawl.c])

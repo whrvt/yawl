@@ -58,6 +58,10 @@ int remove_dir(const char *path);
 /* Calculates a sha256sum for a file and puts it in `hash_str` */
 int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len);
 
+/* Extract the hash from a SHA256SUMS file from an online location
+ * (i.e. ...snapshots/latest-container-runtime-public-beta/SHA256SUMS) */
+int get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_str, size_t hash_str_len);
+
 /* Expands shell paths like ~ to their full equivalents (using wordexp)
  * Returns a newly allocated string that must be freed by the caller
  * Returns NULL on failure */

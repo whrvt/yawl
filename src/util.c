@@ -203,7 +203,6 @@ char *get_base_name(const char *path) {
 
     return base_name;
 }
-
 int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len) {
     FILE *fp = fopen(file_path, "rb");
     if (!fp) {
@@ -264,6 +263,52 @@ int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len)
 
     hash_str[hash_str_len - 1] = '\0';
     return 0;
+}
+
+int get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_str, size_t hash_str_len) {
+    char *local_sums_path = NULL;
+    FILE *fp = NULL;
+    char line[200];
+    int found = 0;
+
+    join_paths(local_sums_path, get_yawl_dir(), "SHA256SUMS");
+
+    if (download_file(hash_url, local_sums_path) != 0) {
+        free(local_sums_path);
+        return -1;
+    }
+
+    fp = fopen(local_sums_path, "r");
+    if (!fp) {
+        free(local_sums_path);
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), fp)) {
+        /* Format is "hash *filename" */
+        char *hash_end = strchr(line, ' ');
+        if (!hash_end)
+            continue;
+
+        *hash_end = '\0';
+        char *file = hash_end + 2; /* Skip " *" */
+
+        char *newline = strchr(file, '\n');
+        if (newline)
+            *newline = '\0';
+
+        if (strcmp(file, file_name) == 0) {
+            strncpy(hash_str, line, hash_str_len - 1);
+            hash_str[hash_str_len - 1] = '\0';
+            found = 1;
+            break;
+        }
+    }
+
+    fclose(fp);
+    free(local_sums_path);
+
+    return found ? 0 : -1;
 }
 
 int download_file(const char *url, const char *output_path) {
