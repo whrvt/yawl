@@ -32,7 +32,7 @@ Current useful environment variables:
   - Do note that this setting is "volatile", it's not stored anywhere. It must be passed on each subsequent invocation to use the same install directory.
 
   Example:
-  - `YAWL_INSTALL_DIR="$HOME/programs/winelauncher;reinstall" yawl`
+  - `YAWL_INSTALL_DIR="$HOME/programs/winelauncher" YAWL_VERBS="reinstall" yawl`
 
 - Other environment variables are passed through as usual.
 

@@ -82,7 +82,7 @@ static void print_usage(void) {
            "\n\n");
     printf("  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/" PROG_NAME
            " or $HOME/.local/share/" PROG_NAME "\n");
-    printf("                   Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher;reinstall\" yawl\n");
+    printf("                   Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher\" YAWL_VERBS=\"reinstall\" yawl\n");
 }
 
 /* Parse a single option string and update the options structure */
