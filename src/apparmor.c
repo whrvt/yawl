@@ -173,7 +173,7 @@ RESULT handle_apparmor(const char *entry_point) {
     /* Try to install the AppArmor profile */
     result = install_apparmor_profile();
     if (FAILED(result)) {
-        LOG_RESULT(LOG_WARNING, "Failed to install AppArmor Profile", result);
+        LOG_RESULT(LOG_WARNING, result, "Failed to install AppArmor Profile");
 
         printf("Warning: Failed to install AppArmor profile. Container may not work correctly.\n");
         printf("Please follow this guide to manually install the AppArmor profile:\n");
@@ -185,7 +185,7 @@ RESULT handle_apparmor(const char *entry_point) {
     LOG_DEBUG("Testing container again after AppArmor profile installation");
     result = test_container(entry_point);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_WARNING, "Container still not working after AppArmor profile installation", result);
+        LOG_RESULT(LOG_WARNING, result, "Container still not working after AppArmor profile installation");
 
         /* Keep console output for user feedback */
         printf("Warning: Container still not working after AppArmor profile installation.\n");

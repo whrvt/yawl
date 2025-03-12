@@ -867,7 +867,6 @@ int main(int argc, char *argv[]) {
     if (prctl(PR_SET_CHILD_SUBREAPER, 1UL, 0UL, 0UL, 0UL) == -1)
         LOG_WARNING("Failed to set child subreaper status: %s", strerror(errno));
 
-    /* Clean up logging before exec */
     log_cleanup();
 
     execv(entry_point, new_argv);
