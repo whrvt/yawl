@@ -31,6 +31,7 @@
 #include "archive_entry.h"
 #include "curl/curl.h"
 
+#include "log.h"
 #include "util.h"
 
 void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, ...) {
@@ -92,9 +93,9 @@ char *expand_path(const char *path) {
     if (ret != 0) {
         /* Handle specific error cases */
         if (ret == WRDE_BADCHAR)
-            fprintf(stderr, "Warning: Invalid characters in path: %s\n", path);
+            LOG_WARNING("Invalid characters in path: %s", path);
         else if (ret == WRDE_SYNTAX)
-            fprintf(stderr, "Warning: Syntax error in path: %s\n", path);
+            LOG_WARNING("Syntax error in path: %s", path);
 
         /* Fall back to the original path */
         return strdup(path);
@@ -105,7 +106,7 @@ char *expand_path(const char *path) {
         result = strdup(p.we_wordv[0]);
     } else {
         /* If we get multiple results or none, fall back to the original path */
-        fprintf(stderr, "Warning: Ambiguous path expansion for: %s\n", path);
+        LOG_WARNING("Ambiguous path expansion for: %s", path);
         result = strdup(path);
     }
 
@@ -113,7 +114,7 @@ char *expand_path(const char *path) {
     return result;
 }
 
-static int create_directory_tree(char *path) {
+static RESULT create_directory_tree(char *path) {
     /* Skip leading slashes */
     char *p = path;
     if (*p == '/')
@@ -124,7 +125,7 @@ static int create_directory_tree(char *path) {
             *p = '\0';
             if (mkdir(path, 0755) != 0 && errno != EEXIST) {
                 *p = '/';
-                return -1;
+                return result_from_errno();
             }
             *p = '/';
         }
@@ -132,43 +133,44 @@ static int create_directory_tree(char *path) {
     }
 
     /* Create the final directory */
-    return (mkdir(path, 0755) != 0 && errno != EEXIST) ? -1 : 0;
+    if (mkdir(path, 0755) != 0 && errno != EEXIST)
+        return result_from_errno();
+
+    return RESULT_OK;
 }
 
-int ensure_dir(const char *path) {
+RESULT ensure_dir(const char *path) {
     if (!path)
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_FILESYSTEM, E_INVALID_ARG);
 
     char *expanded_path = expand_path(path);
-    if (!expanded_path)
-        return -1;
+    RETURN_NULL_CHECK(expanded_path, "Failed to expand path");
 
-    int ret = -1;
+    RESULT ret = RESULT_OK;
     struct stat st;
     if (stat(expanded_path, &st) == 0) {
         if (S_ISDIR(st.st_mode)) {
-            ret = access(expanded_path, W_OK);
-            goto ensure_done;
-        } else {
-            /* Path exists but is not a directory */
+            if (access(expanded_path, W_OK) != 0)
+                ret = result_from_errno();
+        } else { /* Exists, not a directory */
             errno = ENOTDIR;
-            goto ensure_done;
+            ret = result_from_errno();
         }
+    } else {
+        /* Directory doesn't exist, create it (recursively) */
+        ret = create_directory_tree(expanded_path);
     }
 
-    /* Directory doesn't exist, create it (recursively) */
-    ret = create_directory_tree(expanded_path);
-
-ensure_done:
     free(expanded_path);
     return ret;
 }
 
-int remove_dir(const char *path) {
+RESULT remove_dir(const char *path) {
     DIR *dir = opendir(path);
     if (!dir)
-        return -1;
+        return result_from_errno();
 
+    RESULT result = RESULT_OK;
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
@@ -180,67 +182,77 @@ int remove_dir(const char *path) {
         struct stat st;
         if (lstat(full_path, &st) == 0) {
             if (S_ISDIR(st.st_mode)) {
-                remove_dir(full_path);
-            } else
-                unlink(full_path);
+                RESULT dir_result = remove_dir(full_path);
+                if (FAILED(dir_result)) {
+                    free(full_path);
+                    closedir(dir);
+                    return dir_result;
+                }
+            } else if (unlink(full_path) != 0) {
+                RESULT unlink_result = result_from_errno();
+                LOG_RESULT(LOG_WARNING, unlink_result, "Failed to remove file");
+                result = unlink_result; /* remember the error, but continue */
+            }
         }
 
         free(full_path);
     }
 
     closedir(dir);
-    return rmdir(path);
+
+    if (rmdir(path) != 0) {
+        RESULT rmdir_result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, rmdir_result, "Failed to remove directory");
+        return rmdir_result;
+    }
+
+    return result;
 }
 
-char *get_base_name(const char *path) {
-    char *path_copy = strdup(path);
-    if (!path_copy)
-        return NULL;
-
-    char *last_slash = strrchr(path_copy, '/');
-    char *base_name = strdup(last_slash ? last_slash + 1 : path_copy);
-    free(path_copy);
-
-    return base_name;
-}
-int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len) {
+RESULT calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len) {
     FILE *fp = fopen(file_path, "rb");
     if (!fp) {
-        fprintf(stderr, "Error: Failed to open file for hash calculation: %s\n", strerror(errno));
-        return -1;
+        RESULT result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to open file for hash calculation");
+        return result;
     }
 
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     if (!mdctx) {
-        fprintf(stderr, "Error: Failed to create hash context\n");
+        RESULT result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
+        LOG_RESULT(LOG_ERROR, result, "Failed to create hash context");
         fclose(fp);
-        return -1;
+        return result;
     }
 
     const EVP_MD *md = EVP_sha256();
     if (!md) {
-        fprintf(stderr, "Error: Failed to get SHA256 algorithm\n");
+        RESULT result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_NOT_SUPPORTED);
+        LOG_RESULT(LOG_ERROR, result, "Failed to get SHA256 algorithm");
         EVP_MD_CTX_free(mdctx);
         fclose(fp);
-        return -1;
+        return result;
     }
 
     if (EVP_DigestInit_ex(mdctx, md, NULL) != 1) {
-        fprintf(stderr, "Error: Failed to initialize hash context\n");
+        RESULT result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_UNKNOWN);
+        LOG_RESULT(LOG_ERROR, result, "Failed to initialize hash context");
         EVP_MD_CTX_free(mdctx);
         fclose(fp);
-        return -1;
+        return result;
     }
 
     unsigned char buffer[BUFFER_SIZE];
     size_t bytes_read;
+    RESULT result = RESULT_OK;
 
     while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, fp)) > 0) {
         if (EVP_DigestUpdate(mdctx, buffer, bytes_read) != 1) {
-            fprintf(stderr, "Error: Failed to update hash context\n");
+            result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_UNKNOWN);
+            LOG_RESULT(LOG_ERROR, result, "Failed to update hash context");
             EVP_MD_CTX_free(mdctx);
             fclose(fp);
-            return -1;
+            return result;
         }
     }
 
@@ -250,9 +262,10 @@ int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len)
     unsigned int hash_len;
 
     if (EVP_DigestFinal_ex(mdctx, hash, &hash_len) != 1) {
-        fprintf(stderr, "Error: Failed to finalize hash\n");
+        result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_UNKNOWN);
+        LOG_RESULT(LOG_ERROR, result, "Failed to finalize hash");
         EVP_MD_CTX_free(mdctx);
-        return -1;
+        return result;
     }
 
     EVP_MD_CTX_free(mdctx);
@@ -262,26 +275,32 @@ int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len)
         snprintf(hash_str + (i * 2), 3, "%02x", hash[i]);
 
     hash_str[hash_str_len - 1] = '\0';
-    return 0;
+    return RESULT_OK;
 }
 
-int get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_str, size_t hash_str_len) {
+RESULT get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_str, size_t hash_str_len) {
     char *local_sums_path = NULL;
     FILE *fp = NULL;
     char line[200];
     int found = 0;
+    RESULT result = RESULT_OK;
 
-    join_paths(local_sums_path, get_yawl_dir(), "SHA256SUMS");
+    join_paths(local_sums_path, g_yawl_dir, "SHA256SUMS");
+    RETURN_NULL_CHECK(local_sums_path, "Failed to allocate memory for hash file path");
 
-    if (download_file(hash_url, local_sums_path) != 0) {
+    result = download_file(hash_url, local_sums_path);
+    if (FAILED(result)) {
+        LOG_RESULT(LOG_ERROR, result, "Failed to download hash file");
         free(local_sums_path);
-        return -1;
+        return result;
     }
 
     fp = fopen(local_sums_path, "r");
     if (!fp) {
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to open downloaded hash file");
         free(local_sums_path);
-        return -1;
+        return result;
     }
 
     while (fgets(line, sizeof(line), fp)) {
@@ -308,21 +327,29 @@ int get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_
     fclose(fp);
     free(local_sums_path);
 
-    return found ? 0 : -1;
+    if (!found)
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_NOT_FOUND);
+
+    return RESULT_OK;
 }
 
-int download_file(const char *url, const char *output_path) {
+RESULT download_file(const char *url, const char *output_path) {
+    if (!url || !output_path)
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
+
     CURL *curl = curl_easy_init();
     if (!curl) {
-        fprintf(stderr, "curl error: %s\n", curl_easy_strerror(CURLE_FAILED_INIT));
-        return -1;
+        RESULT result = MAKE_RESULT(SEV_ERROR, CAT_NETWORK, E_UNKNOWN);
+        LOG_RESULT(LOG_ERROR, result, "Failed to initialize curl");
+        return result;
     }
 
     FILE *fp = fopen(output_path, "wb");
     if (!fp) {
-        fprintf(stderr, "Error: Couldn't open output_path (%s): %s\n", output_path, strerror(errno));
+        RESULT result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to open output file for download");
         curl_easy_cleanup(curl);
-        return -1;
+        return result;
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -344,22 +371,29 @@ int download_file(const char *url, const char *output_path) {
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
-        fprintf(stderr, "Failed to download %s, curl error: %s\n", url, curl_easy_strerror(res));
-        return -1;
+        RESULT result = MAKE_RESULT(SEV_ERROR, CAT_NETWORK, res);
+        LOG_RESULT(LOG_ERROR, result, "Download failed");
+        return result;
     }
 
-    return 0;
+    return RESULT_OK;
 }
 
-int extract_archive(const char *archive_path, const char *extract_path) {
+RESULT extract_archive(const char *archive_path, const char *extract_path) {
+    if (!archive_path || !extract_path)
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
+
     struct archive *a;
     struct archive *ext;
     struct archive_entry *entry;
     int flags = ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS |
                 ARCHIVE_EXTRACT_OWNER;
-    int r;
+    RESULT result = RESULT_OK;
 
     a = archive_read_new();
+    if (!a)
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
+
     archive_read_support_format_tar(a);
     archive_read_support_filter_xz(a);
     archive_read_support_filter_zstd(a);
@@ -367,41 +401,62 @@ int extract_archive(const char *archive_path, const char *extract_path) {
     archive_read_support_filter_gzip(a);
 
     ext = archive_write_disk_new();
+    if (!ext) {
+        archive_read_free(a);
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
+    }
+
     archive_write_disk_set_options(ext, flags);
     archive_write_disk_set_standard_lookup(ext);
 
-    if ((r = archive_read_open_filename(a, archive_path, BUFFER_SIZE))) {
-        fprintf(stderr, "Error: Extracting failed (read_open_filename): %s\n", archive_error_string(a));
-        return -1;
+    if (archive_read_open_filename(a, archive_path, BUFFER_SIZE) != ARCHIVE_OK) {
+        result = MAKE_RESULT(SEV_ERROR, CAT_FILESYSTEM, E_IO_ERROR);
+        LOG_RESULT(LOG_ERROR, result, "Failed to open archive for extraction");
+        goto cleanup;
     }
 
     char *old_cwd = getcwd(NULL, 0);
+    if (!old_cwd) {
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to get current working directory");
+        goto cleanup;
+    }
+
     if (chdir(extract_path) != 0) {
-        fprintf(stderr, "Error: Extracting failed (chdir): %s\n", strerror(errno));
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to change to extraction directory");
         free(old_cwd);
-        return -1;
+        goto cleanup;
     }
 
     while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
-        r = archive_write_header(ext, entry);
-        if (r != ARCHIVE_OK)
+        if (archive_write_header(ext, entry) != ARCHIVE_OK) {
+            LOG_WARNING("Skipping entry, failed to write header: %s", archive_error_string(ext));
             continue;
+        }
 
         const void *buff;
         size_t size;
         int64_t offset;
 
-        while (archive_read_data_block(a, &buff, &size, &offset) == ARCHIVE_OK)
-            if (archive_write_data_block(ext, buff, size, offset) != ARCHIVE_OK)
+        while (archive_read_data_block(a, &buff, &size, &offset) == ARCHIVE_OK) {
+            if (archive_write_data_block(ext, buff, size, offset) != ARCHIVE_OK) {
+                LOG_WARNING("Write error for %s: %s", archive_entry_pathname(entry), archive_error_string(ext));
                 break;
+            }
+        }
     }
 
-    chdir(old_cwd);
+    if (chdir(old_cwd) != 0) {
+        LOG_WARNING("Failed to restore working directory: %s", strerror(errno));
+    }
+
     free(old_cwd);
 
+cleanup:
     archive_read_close(a);
     archive_read_free(a);
     archive_write_close(ext);
     archive_write_free(ext);
-    return 0;
+    return result;
 }

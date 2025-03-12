@@ -13,7 +13,9 @@ Also, the static link libraries (curl, zlib) are included, but can be rebuilt wi
 `yawl winecfg.exe`
 
 Current useful environment variables:
+
 - `YAWL_VERBS`: Semicolon-separated list of verbs to control yawl behavior:
+
   - `version`: Just print the version of yawl and exit
   - `verify`: Verify the runtime before running
   - `reinstall`: Force reinstallation of the runtime
@@ -21,18 +23,35 @@ Current useful environment variables:
   - `exec=PATH`: Set the executable to run in the container (default: `/usr/bin/wine`)
   - `wineserver=PATH`: Set the wineserver executable path when creating a wrapper
   - `make_wrapper=NAME`: Create a configuration file and symlink for easy reuse
-  - `config=NAME`: Use a specific named configuration
+  - `config=NAME`: Use a specific named configuration (can be the full path or lone config name with/without .cfg)
+    Configs are loaded from the default install/configs directory, if specified by symlink or without a full path.
 
   Examples:
+
   - `YAWL_VERBS="reinstall;verify" yawl winecfg`
   - `YAWL_VERBS="exec=/opt/wine/bin/wine64" yawl explorer.exe`
   - `YAWL_VERBS="exec=/opt/firefox/firefox" yawl`
 
 - `YAWL_INSTALL_DIR`: Override the default installation directory of `$XDG_DATA_HOME/yawl` or `$HOME/.local/share/yawl`
+
   - Do note that this setting is "volatile", it's not stored anywhere. It must be passed on each subsequent invocation to use the same install directory.
 
   Example:
+
   - `YAWL_INSTALL_DIR="$HOME/programs/winelauncher" YAWL_VERBS="reinstall" yawl`
+
+- `YAWL_LOG_LEVEL`: Control the verbosity of the logging output. Valid values are:
+
+  - `none`: Turn off all logging
+  - `error`: Show only critical errors that prevent proper operation
+  - `warning`: Show warnings and errors (default)
+  - `info`: Show normal operational information and all of the above
+  - `debug`: Show detailed debugging information and all of the above
+
+- `YAWL_LOG_FILE`: Specify a custom path for the log file. By default, logs are written to:
+
+  - Terminal output (only when running interactively)
+  - `$YAWL_INSTALL_DIR/yawl.log`
 
 - Other environment variables are passed through as usual.
 
@@ -43,12 +62,13 @@ yawl can create named wrappers that simplify running wine with specific configur
 ### Creating a Wrapper
 
 ```
-YAWL_VERBS="make_wrapper=gaming;exec=/opt/wine-staging/bin/wine64;verify" yawl
+YAWL_VERBS="make_wrapper=gaming;exec=/opt/wine-staging/bin/wine64" yawl
 ```
 
 This command:
+
 1. Creates a configuration file at `~/.local/share/yawl/configs/gaming.cfg`
-2. Stores the current options (`exec=` path and `verify` flag) in that file
+2. Stores the current options (only `exec=` for now) in that file
 3. Creates a symlink in the same directory as yawl (e.g., `yawl-gaming` → `yawl`)
 
 ### Using a Wrapper
@@ -78,6 +98,7 @@ YAWL_VERBS="make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-os
 ```
 
 This command:
+
 1. Creates the standard wrapper (`yawl-osu`) pointing to your Wine binary
 2. Also creates a wineserver wrapper (`yawl-osuserver`) pointing to your wineserver binary
 
@@ -90,6 +111,7 @@ WINEPREFIX=~/.wine WINE=yawl-osu winetricks d3dx9
 ### Practical Examples
 
 1. Set up different Wine versions:
+
    ```
    YAWL_VERBS="make_wrapper=stable;exec=/usr/bin/wine;wineserver=/usr/bin/wineserver" yawl
    YAWL_VERBS="make_wrapper=staging;exec=/opt/wine-staging/bin/wine64;wineserver=/opt/wine-staging/bin/wineserver" yawl
@@ -97,19 +119,23 @@ WINEPREFIX=~/.wine WINE=yawl-osu winetricks d3dx9
    ```
 
 2. Create a launcher for a specific game:
+
    ```
    # Place this script in ~/bin/gta5
    #!/bin/sh
    exec yawl-gaming "C:\\Program Files\\Grand Theft Auto V\\GTA5.exe"
    ```
 
-3. Set up a wrapper with special environment:
+3. (SOON) Set up a wrapper with special a environment:
+
    ```
    WINEDEBUG=fixme-all DXVK_HUD=1 YAWL_VERBS="make_wrapper=debug;exec=/usr/bin/wine;wineserver=/usr/bin/wineserver" yawl
    ```
+
    Then you can run with these debug settings: `yawl-debug GTA5.exe`
 
 4. Using with winetricks to install components for a game:
+
    ```
    # First create your wrapper with wineserver
    YAWL_VERBS="make_wrapper=mygame;exec=/opt/wine-ge/bin/wine64;wineserver=/opt/wine-ge/bin/wineserver" yawl

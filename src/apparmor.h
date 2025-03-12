@@ -20,5 +20,7 @@
 
 #pragma once
 
+#include "result.h"
+
 /* Handle AppArmor configuration if needed (usually Ubuntu/Debian distros) */
-int handle_apparmor(const char *entry_point);
+RESULT handle_apparmor(const char *entry_point);

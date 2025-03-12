@@ -22,6 +22,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <pwd.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -30,7 +31,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "result.h"
+
 #define PROG_NAME "yawl"
+#define CONFIG_DIR "configs"
 
 #define BUFFER_SIZE 8192
 
@@ -49,32 +53,49 @@ void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, .
 
 /* Ensure a directory exists and is writable, creating it if necessary
  * Will create parent directories as needed (like mkdir -p)
- * Returns 0 on success, -1 on error */
-int ensure_dir(const char *path);
+ * Returns RESULT_OK on success, error RESULT on failure */
+RESULT ensure_dir(const char *path);
 
-/* Does what it looks like */
-int remove_dir(const char *path);
+/* Removes a directory and all its contents recursively
+ * Returns RESULT_OK on success, error RESULT on failure */
+RESULT remove_dir(const char *path);
 
-/* Calculates a sha256sum for a file and puts it in `hash_str` */
-int calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len);
+/* Calculates a sha256sum for a file and puts it in `hash_str`
+ * Returns RESULT_OK on success, error RESULT on failure */
+RESULT calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len);
 
-/* Extract the hash from a SHA256SUMS file from an online location
- * (i.e. ...snapshots/latest-container-runtime-public-beta/SHA256SUMS) */
-int get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_str, size_t hash_str_len);
+/* Find the hash for file_name (e.g. SteamLinuxRuntime_sniper.tar.xz) from a SHA256SUMS hash_url
+ * (i.e. ...snapshots/latest-container-runtime-public-beta/SHA256SUMS)
+ * Returns RESULT_OK on success, error RESULT on failure */
+RESULT get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_str, size_t hash_str_len);
 
 /* Expands shell paths like ~ to their full equivalents (using wordexp)
  * Returns a newly allocated string that must be freed by the caller
  * Returns NULL on failure */
 char *expand_path(const char *path);
 
-/* A helper to extract an archive from `archive_path` to `extract_path` with libarchive */
-int extract_archive(const char *archive_path, const char *extract_path);
+/* A helper to extract an archive from `archive_path` to `extract_path` with libarchive
+ * Returns RESULT_OK on success, error RESULT on failure */
+RESULT extract_archive(const char *archive_path, const char *extract_path);
 
-/* A helper to download a file from `url` to `output_path` with libcurl */
-int download_file(const char *url, const char *output_path);
+/* A helper to download a file from `url` to `output_path` with libcurl
+ * Returns RESULT_OK on success, error RESULT on failure */
+RESULT download_file(const char *url, const char *output_path);
 
-/* Extract the base name from a given executable path */
-char *get_base_name(const char *path);
+/* Extract the base name from a given executable path (allocates) */
+static inline char *get_base_name(const char *path) {
+    char *path_copy = strdup(path);
+    if (!path_copy)
+        return NULL;
 
-/* Helper to find the shared directory for the yawl installation */
-const char *get_yawl_dir(void);
+    char *last_slash = strrchr(path_copy, '/');
+    char *base_name = strdup(last_slash ? last_slash + 1 : path_copy);
+    free(path_copy);
+
+    return base_name;
+}
+
+/* The global installation path, set at startup in main() */
+extern const char *g_yawl_dir;
+/* The global configuration path, set at startup in main() */
+extern const char *g_config_dir;

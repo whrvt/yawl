@@ -23,11 +23,11 @@
 #include "config.h"
 
 #include <getopt.h>
-#include <pwd.h>
 #include <stdint.h>
 #include <sys/prctl.h>
 
 #include "apparmor.h"
+#include "log.h"
 #include "util.h"
 
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
@@ -38,14 +38,13 @@
     "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION "/snapshots/latest-container-runtime-public-beta"
 
 #define DEFAULT_EXEC_PATH "/usr/bin/wine"
-#define CONFIG_DIR "configs"
 #define CONFIG_EXTENSION ".cfg"
 
-static char *g_yawl_dir;
-static char *g_config_dir;
+const char *g_yawl_dir;
+const char *g_config_dir;
 
 struct options {
-    int version;
+    int version;        /* 1 = return a version string and exit */
     int verify;         /* 0 = no verification (default), 1 = verify */
     int reinstall;      /* 0 = don't reinstall unless needed, 1 = force reinstall */
     int help;           /* 0 = don't show help, 1 = show help and exit */
@@ -83,12 +82,23 @@ static void print_usage(void) {
            " or $HOME/.local/share/" PROG_NAME "\n");
     printf(
         "                   Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher\" YAWL_VERBS=\"reinstall\" yawl\n");
+    printf("\n");
+    printf("  YAWL_LOG_LEVEL   Control the verbosity of the logging output. Valid values are:\n");
+    printf("                   - 'none'     Turn off all logging\n");
+    printf("                   - 'error'    Show only critical errors that prevent proper operation\n");
+    printf("                   - 'warning'  Show warnings and errors (default)\n");
+    printf("                   - 'info'     Show normal operational information and all of the above\n");
+    printf("                   - 'debug'    Show detailed debugging information and all of the above\n");
+    printf("\n");
+    printf("  YAWL_LOG_FILE    Specify a custom path for the log file. By default, logs are written to:\n");
+    printf("                   - Terminal output (only when running interactively)\n");
+    printf("                   - $YAWL_INSTALL_DIR/yawl.log\n");
 }
 
 /* Parse a single option string and update the options structure */
-static int parse_option(const char *option, struct options *opts) {
+static RESULT parse_option(const char *option, struct options *opts) {
     if (!option || !opts || !option[0])
-        return 0; /* Skip empty options, not an error */
+        return RESULT_OK; /* Skip empty options, not an error */
 
     if (strncmp(option, "version", 7) == 0) {
         opts->version = 1;
@@ -103,36 +113,35 @@ static int parse_option(const char *option, struct options *opts) {
 
         opts->exec_path = expand_path(option + 5);
         if (!opts->exec_path) {
-            fprintf(stderr, "Error: Failed to expand exec path: %s\n", option + 5);
-            return -1;
+            LOG_ERROR("Failed to expand exec path: %s", option + 5);
+            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
         }
     } else if (strncmp(option, "make_wrapper=", 13) == 0) {
         free(opts->make_wrapper);
         opts->make_wrapper = strdup(option + 13);
-        if (!opts->make_wrapper) {
-            return -1;
-        }
+        if (!opts->make_wrapper)
+            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
     } else if (strncmp(option, "config=", 7) == 0) {
         free(opts->config);
         opts->config = strdup(option + 7);
-        if (!opts->config) {
-            return -1;
-        }
+        if (!opts->config)
+            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
     } else if (strncmp(option, "wineserver=", 11) == 0) {
         free(opts->wineserver);
 
         opts->wineserver = expand_path(option + 11);
         if (!opts->wineserver) {
-            fprintf(stderr, "Error: Failed to expand wineserver path: %s\n", option + 11);
-            return -1;
+            LOG_ERROR("Failed to expand wineserver path: %s", option + 11);
+            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
         }
-    } else
-        return 1; /* Unknown option */
+    } else {
+        return MAKE_RESULT(SEV_WARNING, CAT_CONFIG, E_UNKNOWN); /* Unknown option */
+    }
 
-    return 0;
+    return RESULT_OK;
 }
 
-static int parse_env_options(struct options *opts) {
+static RESULT parse_env_options(struct options *opts) {
     opts->version = 0;
     opts->verify = 0;
     opts->reinstall = 0;
@@ -143,36 +152,43 @@ static int parse_env_options(struct options *opts) {
     opts->wineserver = NULL;
 
     if (!opts->exec_path)
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
 
     const char *verbs = getenv("YAWL_VERBS");
     if (!verbs)
-        return 0;
+        return RESULT_OK;
 
     char *verbs_copy = strdup(verbs);
     if (!verbs_copy) {
         free(opts->exec_path);
         opts->exec_path = NULL;
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
     }
 
     char *token = strtok(verbs_copy, ";");
+    RESULT result = RESULT_OK;
+
     while (token) {
-        int result = parse_option(token, opts);
-        if (result < 0) {
-            free(verbs_copy);
-            return -1;
-        } else if (result > 0) {
-            fprintf(stderr, "Warning: Unknown YAWL_VERBS token: %s\n", token);
+        result = parse_option(token, opts);
+        if (FAILED(result)) {
+            if (RESULT_CODE(result) != E_UNKNOWN) {
+                free(verbs_copy);
+                return result;
+            }
+            LOG_WARNING("Unknown YAWL_VERBS token: %s", token);
+            result = RESULT_OK;
+        } else if (opts->version || opts->help) {
+            LOG_DEBUG("Returning early, got %s token", opts->version ? "version" : "help");
+            break;
         }
         token = strtok(NULL, ";");
     }
 
     free(verbs_copy);
-    return 0;
+    return RESULT_OK;
 }
 
-static char *setup_install_dir(void) {
+static const char *setup_prog_dir(void) {
     char *result = NULL;
     struct passwd *pw;
 
@@ -184,126 +200,170 @@ static char *setup_install_dir(void) {
     else if ((temp_dir = getenv("HOME")) || ((pw = getpwuid(getuid())) && (temp_dir = pw->pw_dir)))
         join_paths(result, temp_dir, ".local/share/" PROG_NAME);
 
-    if (ensure_dir(result) != 0) {
-        fprintf(stderr, "Error: The program directory (%s) could not be created: %s\n", result, strerror(errno));
+    RESULT ensure_result = ensure_dir(result);
+    if (FAILED(ensure_result)) {
+        fprintf(stderr, "Error: Failed to create or access program directory: %s\n", result_to_string(ensure_result));
         free(result);
+        result = NULL;
     }
 
     return result;
 }
 
-const char *get_yawl_dir(void) {
-    if (g_yawl_dir)
-        return g_yawl_dir;
-    return (g_yawl_dir = setup_install_dir());
+static const char *setup_config_dir(void) {
+    char *result = NULL;
+    join_paths(result, g_yawl_dir, CONFIG_DIR);
+
+    RESULT ensure_result = ensure_dir(result);
+    if (FAILED(ensure_result)) {
+        fprintf(stderr, "Error: Failed to create or access config directory: %s\n", result_to_string(ensure_result));
+        free(result);
+        result = NULL;
+    }
+
+    return result;
 }
 
-static int verify_runtime(const char *runtime_path) {
+static RESULT verify_runtime(const char *runtime_path) {
     char *versions_txt_path = NULL;
     char *pv_verify_path = NULL;
+    RESULT result;
 
     /* First, a lightweight check for VERSIONS.txt (same as the SLR shell script) */
     join_paths(versions_txt_path, runtime_path, "VERSIONS.txt");
+    RETURN_NULL_CHECK(versions_txt_path, "Failed to allocate memory for VERSIONS.txt path");
+
     if (access(versions_txt_path, F_OK) != 0) {
-        fprintf(stderr, "Error: VERSIONS.txt not found. Runtime may be corrupt or incomplete.\n");
+        LOG_ERROR("VERSIONS.txt not found. Runtime may be corrupt or incomplete.");
         free(versions_txt_path);
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
     }
     free(versions_txt_path);
 
     /* Check if pv-verify exists */
     join_paths(pv_verify_path, runtime_path, "pressure-vessel/bin/pv-verify");
+    RETURN_NULL_CHECK(pv_verify_path, "Failed to allocate memory for pv-verify path");
+
     if (access(pv_verify_path, X_OK) != 0) {
-        fprintf(stderr, "Error: pv-verify not found. Runtime may be corrupt or incomplete.\n");
+        LOG_ERROR("pv-verify not found. Runtime may be corrupt or incomplete.");
         free(pv_verify_path);
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
     }
 
     char *cmd = NULL;
     append_sep(cmd, " ", pv_verify_path, "--quiet");
+    RETURN_NULL_CHECK(cmd, "Failed to allocate memory for command string");
 
     char *old_cwd = getcwd(NULL, 0);
+    if (!old_cwd) {
+        result = MAKE_RESULT(SEV_ERROR, CAT_FILESYSTEM, E_OUT_OF_MEMORY);
+        LOG_RESULT(LOG_ERROR, result, "Failed to get current working directory");
+        free(pv_verify_path);
+        free(cmd);
+        return result;
+    }
+
     if (chdir(runtime_path) != 0) {
-        fprintf(stderr, "Error: Failed to change to runtime directory: %s\n", strerror(errno));
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to change to runtime directory");
         free(old_cwd);
         free(pv_verify_path);
         free(cmd);
-        return -1;
+        return result;
     }
 
     /* Run pv-verify */
     int cmd_ret = system(cmd);
 
     /* Restore directory */
-    chdir(old_cwd);
+    if (chdir(old_cwd) != 0) {
+        LOG_WARNING("Failed to restore directory: %s", strerror(errno));
+    }
     free(old_cwd);
     free(cmd);
 
     if (cmd_ret != 0) {
-        fprintf(stderr, "Error: pv-verify reported verification errors (exit code %d).\n", WEXITSTATUS(cmd_ret));
+        LOG_ERROR("pv-verify reported verification errors (exit code %d).", WEXITSTATUS(cmd_ret));
         free(pv_verify_path);
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_INVALID_ARG);
     }
 
     char *entry_point = NULL;
-    join_paths(entry_point, get_yawl_dir(), RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    RETURN_NULL_CHECK(entry_point, "Failed to allocate memory for entry point path");
+
     if (access(entry_point, X_OK) != 0) {
-        fprintf(stderr, "Error: Runtime entry point not found: %s\n", entry_point);
+        LOG_ERROR("Runtime entry point not found: %s", entry_point);
         free(entry_point);
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
     }
 
     /* Check and fix AppArmor issues if needed */
-    if (handle_apparmor(entry_point) != 0) {
-        fprintf(stderr, "Warning: AppArmor issues detected but couldn't be fully resolved.\n");
-        fprintf(stderr, "The program will continue, but may not work correctly.\n");
+    RESULT apparmor_result = handle_apparmor(entry_point);
+    if (FAILED(apparmor_result)) {
+        LOG_WARNING("AppArmor issues detected but couldn't be fully resolved.");
+        LOG_WARNING("The program will continue, but may not work correctly.");
     }
 
-    printf("Runtime verification completed successfully.\n");
+    LOG_INFO("Runtime verification completed successfully.");
     free(pv_verify_path);
     free(entry_point);
-    return 0;
+    return RESULT_OK;
 }
 
-static int verify_slr_hash(const char *archive_path, const char *local_shasum_path) {
+static RESULT verify_slr_hash(const char *archive_path, const char *hash_url) {
     char expected_hash[65] = {0};
     char actual_hash[65] = {0};
+    RESULT result;
 
-    if (get_online_slr_hash(RUNTIME_ARCHIVE_NAME, local_shasum_path, expected_hash, sizeof(expected_hash)) != 0) {
-        fprintf(stderr, "Warning: Unexpected error while trying to obtain the hash from the SHA256SUMS file.\n");
-        fprintf(stderr, "Warning: Proceeding with unverified archive.");
-        return 0;
-    } else if (calculate_sha256(archive_path, actual_hash, sizeof(actual_hash)) != 0) {
-        fprintf(stderr, "Error: Could not calculate hash.\n");
-        return -1;
-    } else if (strcmp(expected_hash, actual_hash) != 0) {
-        fprintf(stderr, "Error: Archive hash mismatch.\n");
-        return -1;
+    result = get_online_slr_hash(RUNTIME_ARCHIVE_NAME, hash_url, expected_hash, sizeof(expected_hash));
+    if (FAILED(result)) {
+        LOG_WARNING("Unexpected error while trying to obtain the hash from the SHA256SUMS file.");
+        LOG_WARNING("Attempting to proceed with unverified archive.");
+        return RESULT_OK;
     }
-    return 0;
+
+    result = calculate_sha256(archive_path, actual_hash, sizeof(actual_hash));
+    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Could not calculate hash");
+
+    if (strcmp(expected_hash, actual_hash) != 0) {
+        LOG_WARNING("Archive hash mismatch.");
+        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_INVALID_ARG);
+    }
+
+    return RESULT_OK;
 }
 
-static int setup_runtime(const struct options *opts) {
+static RESULT setup_runtime(const struct options *opts) {
     /* Reinstall obviously implies verify */
-    int ret = 0, install = opts->reinstall, verify = (opts->verify || opts->reinstall);
+    RESULT ret = RESULT_OK;
+    int install = opts->reinstall, verify = (opts->verify || opts->reinstall);
     char *archive_path = NULL, *runtime_path = NULL;
     struct stat st;
 
-    join_paths(archive_path, get_yawl_dir(), RUNTIME_ARCHIVE_NAME);
-    join_paths(runtime_path, get_yawl_dir(), RUNTIME_PREFIX RUNTIME_VERSION);
+    join_paths(archive_path, g_yawl_dir, RUNTIME_ARCHIVE_NAME);
+    RETURN_NULL_CHECK(archive_path, "Failed to allocate memory for archive path");
+
+    join_paths(runtime_path, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
+    RETURN_NULL_CHECK(runtime_path, "Failed to allocate memory for runtime path");
 
     if (!(stat(runtime_path, &st) == 0 && S_ISDIR(st.st_mode))) {
-        fprintf(stderr, "Installing runtime...\n");
+        LOG_INFO("Installing runtime...");
         install = 1;
     } else if (install) {
-        fprintf(stderr, "Reinstalling runtime...\n");
-        remove_dir(runtime_path);
+        LOG_INFO("Reinstalling runtime...");
+        RESULT remove_result = remove_dir(runtime_path);
+        if (FAILED(remove_result))
+            LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove existing runtime directory");
         unlink(archive_path);
     } else if (verify) {
-        printf("Verifying existing runtime folder integrity...\n");
-        if ((ret = verify_runtime(runtime_path)) != 0) {
-            remove_dir(runtime_path);
-            fprintf(stderr, "Reinstalling corrupt runtime folder...\n");
+        LOG_INFO("Verifying existing runtime folder integrity...");
+        ret = verify_runtime(runtime_path);
+        if (FAILED(ret)) {
+            RESULT remove_result = remove_dir(runtime_path);
+            if (FAILED(remove_result))
+                LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove corrupt runtime directory");
+            LOG_INFO("Reinstalling corrupt runtime folder...");
             install = 1;
         }
         /* else we'll skip reinstallation if verification succeeded. */
@@ -311,43 +371,60 @@ static int setup_runtime(const struct options *opts) {
 
     /* Needs to be reinstalled because of: option, failed verification, or fresh install */
     if (install) {
-        int attempt = 0, success = -1;
+        int attempt = 0;
+        RESULT success = MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_UNKNOWN);
+
         do {
-            if (success == 0)
+            if (SUCCEEDED(success))
                 break;
             if (++attempt > 2) {
-                fprintf(stderr, "Error: Runtime verification failed after retrying.\n");
+                LOG_ERROR("Runtime verification failed after retrying.");
                 break;
             }
             if (attempt == 2) {
-                fprintf(stderr, "Warning: Previous attempt failed, trying one more time...\n");
-                remove_dir(runtime_path);
+                LOG_WARNING("Previous attempt failed, trying one more time...");
+                RESULT remove_result = remove_dir(runtime_path);
+                if (FAILED(remove_result)) {
+                    LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove runtime directory");
+                }
                 unlink(archive_path);
             }
 
             int download = 0;
             if (!(stat(archive_path, &st) == 0 && S_ISREG(st.st_mode))) {
-                printf("Downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
+                LOG_INFO("Downloading Steam Runtime (%s)...", RUNTIME_VERSION);
                 download = 1;
             } else {
-                printf("Verifying existing runtime archive integrity...\n");
-                if (verify_slr_hash(archive_path, RUNTIME_BASE_URL "/SHA256SUMS") != 0) {
+                /* TODO: should factor this out to be used as a separate update check */
+                LOG_INFO("Verifying existing runtime archive integrity...");
+                if (FAILED(verify_slr_hash(archive_path, RUNTIME_BASE_URL "/SHA256SUMS"))) {
                     download = 1;
                     unlink(archive_path);
-                    printf("Re-downloading Steam Runtime (%s)...\n", RUNTIME_VERSION);
+                    LOG_INFO("Re-downloading Steam Runtime (%s)...", RUNTIME_VERSION);
                 }
             }
 
-            if (download && (success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path) != 0))
-                continue;
+            if (download) {
+                success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path);
+                if (FAILED(success)) {
+                    LOG_RESULT(LOG_ERROR, success, "Failed to download runtime");
+                    continue;
+                }
+            }
 
-            printf("Extracting runtime...\n");
-            if ((success = extract_archive(archive_path, get_yawl_dir())) != 0)
+            LOG_INFO("Extracting runtime...");
+            success = extract_archive(archive_path, g_yawl_dir);
+            if (FAILED(success)) {
+                LOG_RESULT(LOG_ERROR, success, "Failed to extract runtime");
                 continue;
+            }
 
-            printf("Verifying runtime folder integrity...\n");
-            if ((success = verify_runtime(runtime_path)) != 0)
+            LOG_INFO("Verifying runtime folder integrity...");
+            success = verify_runtime(runtime_path);
+            if (FAILED(success)) {
+                LOG_RESULT(LOG_ERROR, success, "Runtime verification failed");
                 continue;
+            }
         } while (1);
         ret = success;
     }
@@ -419,8 +496,12 @@ static char *build_mesa_paths(void) {
     return result;
 }
 
-/* Extract the config name from argv[0] (e.g., "yawl-foo" -> "foo") */
-static char *get_config_name_from_argv0(const char *argv0) {
+/* Config name to load, either from YAWL_VERBS="config=" or from argv[0] (e.g., "yawl-foo-bar" -> "foo-bar")
+ * (allocates) */
+static char *get_config_name(const char *argv0, const struct options *opts) {
+    if (opts->config)
+        return strdup(opts->config);
+
     char *base_name = get_base_name(argv0);
     if (!base_name)
         return NULL;
@@ -438,73 +519,64 @@ static char *get_config_name_from_argv0(const char *argv0) {
 }
 
 /* Create a configuration file with the current options */
-static int create_config_file(const char *config_name, const struct options *opts) {
+static RESULT create_config_file(const char *config_name, const struct options *opts) {
     char *config_path = NULL;
     FILE *fp = NULL;
-    int ret = 0;
-
-    /* Create the config directory if it doesn't exist */
-    if (ensure_dir(g_config_dir) != 0) {
-        fprintf(stderr, "Error: Failed to create config directory: %s\n", g_config_dir);
-        return -1;
-    }
+    RESULT result = RESULT_OK;
 
     /* Build the config file path */
     join_paths(config_path, g_config_dir, config_name);
+    RETURN_NULL_CHECK(config_path, "Failed to allocate memory for config path");
+
     append_sep(config_path, "", CONFIG_EXTENSION);
 
     /* Open the config file */
     fp = fopen(config_path, "w");
     if (!fp) {
-        fprintf(stderr, "Error: Failed to create config file: %s\n", strerror(errno));
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to create config file");
         free(config_path);
-        return -1;
+        return result;
     }
 
     /* Write the current configuration */
-    /* TODO: probably should rethink adding verify/reinstall to .cfgs, and maybe support adding PATHs */
-    if (opts->verify)
-        fprintf(fp, "verify\n");
-    if (opts->reinstall)
-        fprintf(fp, "reinstall\n");
+    /* TODO: maybe support adding PATHs and other env vars */
     if (opts->exec_path && strcmp(opts->exec_path, DEFAULT_EXEC_PATH) != 0)
         fprintf(fp, "exec=%s\n", opts->exec_path);
 
     fclose(fp);
-    printf("Created configuration file: %s\n", config_path);
+    LOG_INFO("Created configuration file: %s", config_path);
     free(config_path);
 
-    return ret;
+    return result;
 }
 
 /* Create a symlink to the current binary with the suffix */
-static int create_symlink(const char *config_name) {
+static RESULT create_symlink(const char *config_name) {
     char *exec_path = NULL;
     char *exec_dir = NULL;
     char *base_name = NULL;
     char *symlink_path = NULL;
-    int ret = 0;
+    RESULT result = RESULT_OK;
 
     /* Get the full path to the current executable */
     exec_path = realpath("/proc/self/exe", NULL);
     if (!exec_path) {
-        fprintf(stderr, "Error: Failed to get executable path: %s\n", strerror(errno));
-        return -1;
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to get executable path");
+        return result;
     }
 
     /* Extract the base name and directory */
     base_name = get_base_name(exec_path);
-    if (!base_name) {
-        free(exec_path);
-        return -1;
-    }
+    RETURN_NULL_CHECK(base_name, "Failed to extract base name from executable path");
 
     /* Create a copy of exec_path to extract the directory */
     exec_dir = strdup(exec_path);
     if (!exec_dir) {
         free(exec_path);
         free(base_name);
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
     }
 
     char *last_slash = strrchr(exec_dir, '/');
@@ -513,19 +585,21 @@ static int create_symlink(const char *config_name) {
 
     /* Build the symlink path */
     join_paths(symlink_path, exec_dir, base_name);
+    RETURN_NULL_CHECK(symlink_path, "Failed to allocate memory for symlink base path");
+
     append_sep(symlink_path, "-", config_name);
 
     /* Create the symlink */
     if (access(symlink_path, F_OK) == 0) {
-        fprintf(stderr, "Warning: Symlink already exists: %s\n", symlink_path);
+        LOG_WARNING("Symlink already exists: %s", symlink_path);
         unlink(symlink_path);
     }
 
     if (symlink(exec_path, symlink_path) != 0) {
-        fprintf(stderr, "Error: Failed to create symlink: %s\n", strerror(errno));
-        ret = -1;
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to create symlink");
     } else {
-        printf("Created symlink: %s -> %s\n", symlink_path, exec_path);
+        LOG_INFO("Created symlink: %s -> %s", symlink_path, exec_path);
     }
 
     free(exec_path);
@@ -533,105 +607,106 @@ static int create_symlink(const char *config_name) {
     free(base_name);
     free(symlink_path);
 
-    return ret;
+    return result;
 }
 
 /* Create a wineserver wrapper configuration and symlink. Useful for winetricks, as it can find wineserver from
  * `${WINE}server`. */
-static int create_wineserver_wrapper(const char *config_name, const char *wineserver_path) {
+static RESULT create_wineserver_wrapper(const char *config_name, const char *wineserver_path) {
     struct options server_opts;
     char *server_config_name = NULL;
-    int ret = 0;
+    RESULT result = RESULT_OK;
 
     /* Initialize options for the wineserver */
     server_opts.verify = 0;
     server_opts.reinstall = 0;
     server_opts.help = 0;
     server_opts.exec_path = strdup(wineserver_path);
+    RETURN_NULL_CHECK(server_opts.exec_path, "Failed to allocate memory for wineserver path");
+
     server_opts.make_wrapper = NULL;
     server_opts.config = NULL;
     server_opts.wineserver = NULL;
-
-    if (!server_opts.exec_path)
-        return -1;
 
     /* Create the config name: append "server" to the base name */
     server_config_name = strdup(config_name);
     if (!server_config_name) {
         free(server_opts.exec_path);
-        return -1;
+        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
     }
     append_sep(server_config_name, "", "server");
 
     /* Create the wineserver config file */
-    if (create_config_file(server_config_name, &server_opts) != 0) {
-        fprintf(stderr, "Error: Failed to create wineserver config file\n");
-        ret = -1;
-        goto cleanup;
-    }
+    result = create_config_file(server_config_name, &server_opts);
+    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to create wineserver config file");
 
     /* Create the wineserver symlink */
-    if (create_symlink(server_config_name) != 0) {
-        fprintf(stderr, "Error: Failed to create wineserver symlink\n");
-        ret = -1;
-        goto cleanup;
-    }
+    result = create_symlink(server_config_name);
+    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to create wineserver symlink");
 
-    printf("Created wineserver wrapper: yawl-%s\n", server_config_name);
+    LOG_INFO("Created wineserver wrapper: yawl-%s", server_config_name);
 
-cleanup:
     free(server_opts.exec_path);
     free(server_config_name);
-    return ret;
+    return result;
 }
 
 /* Create a wrapper configuration and symlink */
-static int create_wrapper(const char *config_name, const struct options *opts) {
-    if (create_config_file(config_name, opts) != 0)
-        return -1;
+static RESULT create_wrapper(const char *config_name, const struct options *opts) {
+    RESULT result;
 
-    if (create_symlink(config_name) != 0)
-        return -1;
+    result = create_config_file(config_name, opts);
+    RETURN_IF_FAILED(result);
 
-    if (opts->wineserver)
-        if (create_wineserver_wrapper(config_name, opts->wineserver) != 0)
-            fprintf(stderr, "Warning: Failed to create wineserver wrapper. Continuing with main wrapper only.\n");
+    result = create_symlink(config_name);
+    RETURN_IF_FAILED(result);
 
-    return 0;
+    if (opts->wineserver) {
+        result = create_wineserver_wrapper(config_name, opts->wineserver);
+        if (FAILED(result))
+            LOG_WARNING("Failed to create wineserver wrapper. Continuing with main wrapper only.");
+    }
+
+    return RESULT_OK;
 }
 
-/* Load a configuration from a file */
-static int load_config(const char *config_name, struct options *opts) {
+/* Load a configuration from a file, overrides opts passed in from env var */
+static RESULT load_config(const char *config_name, struct options *opts) {
     char *config_path = NULL;
     FILE *fp = NULL;
     char line[BUFFER_SIZE];
-    int ret = 0;
+    RESULT result = RESULT_OK;
 
     /* First, try using the name directly as a path */
     if (access(config_name, F_OK) == 0) {
         config_path = strdup(config_name);
+        RETURN_NULL_CHECK(config_path, "Failed to allocate memory for config path");
     } else {
         /* Build the config file path in the standard location */
         join_paths(config_path, g_config_dir, config_name);
+        RETURN_NULL_CHECK(config_path, "Failed to allocate memory for config path");
 
         /* Add extension if not already present */
-        if (!strstr(config_name, CONFIG_EXTENSION))
+        if (!strstr(config_name, CONFIG_EXTENSION)) {
             append_sep(config_path, "", CONFIG_EXTENSION);
+            RETURN_NULL_CHECK(config_path, "Failed to append extension to config path");
+        }
 
         /* Check if the file exists */
         if (access(config_path, F_OK) != 0) {
-            fprintf(stderr, "Error: Config file not found: %s\n", config_path);
+            LOG_ERROR("Config file not found: %s", config_path);
             free(config_path);
-            return -1;
+            return MAKE_RESULT(SEV_ERROR, CAT_CONFIG, E_NOT_FOUND);
         }
     }
 
     /* Open the config file */
     fp = fopen(config_path, "r");
     if (!fp) {
-        fprintf(stderr, "Error: Failed to open config file: %s\n", strerror(errno));
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to open config file");
         free(config_path);
-        return -1;
+        return result;
     }
 
     /* Read the configuration */
@@ -645,39 +720,53 @@ static int load_config(const char *config_name, struct options *opts) {
         if (line[0] == '\0')
             continue;
 
-        int result = parse_option(line, opts);
-        if (result < 0) {
-            ret = -1;
-            break;
-        } else if (result > 0) {
-            fprintf(stderr, "Warning: Unknown configuration option: %s\n", line);
+        RESULT option_result = parse_option(line, opts);
+        if (FAILED(option_result)) {
+            if (RESULT_CODE(option_result) != E_UNKNOWN) {
+                result = option_result;
+                break;
+            }
+            LOG_WARNING("Unknown configuration option: %s", line);
         }
     }
 
     fclose(fp);
-    /* TODO: implement verbose option, don't pollute stdout otherwise */
-    /* printf("Loaded configuration from: %s\n", config_path); */
+    LOG_DEBUG("Loaded configuration from: %s", config_path);
     free(config_path);
 
-    return ret;
+    return result;
 }
 
 /* Note that we don't care about freeing things from main() since that's handled
    either when execv() is called or when the process exits due to an error. */
 int main(int argc, char *argv[]) {
     struct options opts;
-    char *config_name = NULL;
+    RESULT result;
 
     if (geteuid() == 0) {
-        fprintf(stderr, "Error: This program should not be run as root. Exiting.\n");
+        fprintf(stderr, "This program should not be run as root. Exiting.\n");
         return 1;
     }
 
-    /* TODO: print parsed options for verbose mode */
-    if (parse_env_options(&opts) != 0) {
-        fprintf(stderr, "Error: Failed to parse options. Exiting.\n");
+    /* Setup global directories first */
+    if (!(g_yawl_dir = setup_prog_dir())) {
+        fprintf(stderr, "The program directory is unusable\n");
         return 1;
     }
+
+    if (!(g_config_dir = setup_config_dir())) {
+        fprintf(stderr, "The configuration directory is unusable\n");
+        return 1;
+    }
+
+    result = log_init();
+    if (FAILED(result))
+        fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
+
+    LOG_DEBUG("yawl directories initialized - g_yawl_dir: %s, g_config_dir: %s", g_yawl_dir, g_config_dir);
+
+    result = parse_env_options(&opts);
+    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to parse options");
 
     if (opts.version) {
         printf(VERSION "\n");
@@ -689,60 +778,45 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    if (!get_yawl_dir()) {
-        fprintf(stderr, "Error: The program directory is unusable: %s\n", strerror(errno));
-        return 1;
-    }
-
-    /* Set up config directory */
-    join_paths(g_config_dir, get_yawl_dir(), CONFIG_DIR);
-
     /* Handle make_wrapper option */
     if (opts.make_wrapper) {
-        if (create_wrapper(opts.make_wrapper, &opts) != 0) {
-            fprintf(stderr, "Error: Failed to create wrapper configuration. Exiting.\n");
-            return 1;
-        }
+        result = create_wrapper(opts.make_wrapper, &opts);
+        LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to create wrapper configuration");
 
         /* Exit after creating the wrapper if no other arguments */
         if (argc <= 1) {
-            printf("Wrapper created successfully. Use %s-%s to run with this configuration.\n", get_base_name(argv[0]),
-                   opts.make_wrapper);
+            LOG_INFO("Wrapper created successfully. Use %s-%s to run with this configuration.", get_base_name(argv[0]),
+                     opts.make_wrapper);
             return 0;
         }
     }
 
-    if (opts.config) /* Explicit configuration specified */
-        config_name = opts.config;
-    else /* Check if we're being run via a symlink */
-        config_name = get_config_name_from_argv0(argv[0]);
+    char *config_name = get_config_name(argv[0], &opts);
 
-    /* Load configuration if available */
     if (config_name) {
-        if (load_config(config_name, &opts) != 0)
-            fprintf(stderr, "Error: Failed to load configuration. Continuing with defaults.\n");
-        if (config_name != opts.config) /* Only free if it was allocated by get_config_name_from_argv0 */
-            free(config_name);
+        result = load_config(config_name, &opts);
+        if (FAILED(result))
+            LOG_WARNING("Failed to load configuration. Continuing with defaults.");
     }
+    free(config_name);
 
-    if (setup_runtime(&opts) != 0) {
-        fprintf(stderr, "Error: Failed setting up the runtime. Exiting.\n");
-        return 1;
-    }
+    result = setup_runtime(&opts);
+    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed setting up the runtime");
 
     if (access(opts.exec_path, X_OK) != 0) {
-        fprintf(stderr, "Error: Executable not found or not executable: %s\n", opts.exec_path);
+        LOG_ERROR("Executable not found or not executable: %s", opts.exec_path);
         return 1;
     }
 
     char *entry_point = NULL;
-    join_paths(entry_point, get_yawl_dir(), RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
     if (access(entry_point, X_OK) != 0) {
-        fprintf(stderr, "Error: Runtime entry point not found: %s\n", entry_point);
+        LOG_ERROR("Runtime entry point not found: %s", entry_point);
         return 1;
     }
 
     char **new_argv = calloc(argc + 4, sizeof(char *));
+    RETURN_NULL_CHECK(new_argv, "Failed to allocate memory for command string");
     new_argv[0] = entry_point;
     new_argv[1] = "--verb=waitforexitandrun";
     new_argv[2] = "--";
@@ -765,6 +839,7 @@ int main(int argc, char *argv[]) {
         free(mesa_paths);
     }
 
+    /* TODO: factor and allow setting paths from config */
     if (opts.exec_path && strcmp(opts.exec_path, DEFAULT_EXEC_PATH) != 0) {
         char *exec_dir = strdup(opts.exec_path);
         if (exec_dir) {
@@ -790,7 +865,10 @@ int main(int argc, char *argv[]) {
     }
 
     if (prctl(PR_SET_CHILD_SUBREAPER, 1UL, 0UL, 0UL, 0UL) == -1)
-        fprintf(stderr, "Warning: Failed to set child subreaper status: %s\n", strerror(errno));
+        LOG_WARNING("Failed to set child subreaper status: %s", strerror(errno));
+
+    /* Clean up logging before exec */
+    log_cleanup();
 
     execv(entry_point, new_argv);
     perror("Failed to execute runtime"); /* Shouldn't reach here. */
