@@ -18,8 +18,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#define _GNU_SOURCE
-
 #include "config.h"
 
 #include <getopt.h>
@@ -28,6 +26,7 @@
 
 #include "apparmor.h"
 #include "log.h"
+#include "update.h"
 #include "util.h"
 
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
@@ -48,6 +47,8 @@ struct options {
     int verify;         /* 0 = no verification (default), 1 = verify */
     int reinstall;      /* 0 = don't reinstall unless needed, 1 = force reinstall */
     int help;           /* 0 = don't show help, 1 = show help and exit */
+    int check;          /* 1 = check for updates */
+    int update;         /* 1 = check for and apply updates */
     char *exec_path;    /* Path to the executable to run (default: /usr/bin/wine) */
     char *make_wrapper; /* Name of the wrapper to create (NULL = don't create) */
     char *config;       /* Name of the config to use (NULL = use argv[0] or default) */
@@ -65,6 +66,8 @@ static void print_usage(void) {
            "in the future)\n");
     printf("                   - 'reinstall' Force reinstallation of the runtime\n");
     printf("                   - 'help'      Display this help and exit\n");
+    printf("                   - 'check'     Check for updates to yawl (without downloading/installing)\n");
+    printf("                   - 'update'    Check for, download, and install available updates\n");
     printf("                   - 'exec=PATH' Set the executable to run in the container (default: %s)\n",
            DEFAULT_EXEC_PATH);
     printf("                   - 'make_wrapper=NAME' Create a wrapper configuration and symlink\n");
@@ -108,6 +111,10 @@ static RESULT parse_option(const char *option, struct options *opts) {
         opts->reinstall = 1;
     } else if (LCSTRING_EQUALS(option, "help")) {
         opts->help = 1;
+    } else if (LCSTRING_EQUALS(option, "check")) {
+        opts->check = 1;
+    } else if (LCSTRING_EQUALS(option, "update")) {
+        opts->update = 1;
     } else if (LCSTRING_PREFIX(option, "exec=")) {
         free(opts->exec_path);
         opts->exec_path = expand_path(STRING_AFTER_PREFIX(option, "exec="));
@@ -134,6 +141,8 @@ static RESULT parse_env_options(struct options *opts) {
     opts->verify = 0;
     opts->reinstall = 0;
     opts->help = 0;
+    opts->check = 0;
+    opts->update = 0;
     opts->exec_path = strdup(DEFAULT_EXEC_PATH);
     opts->make_wrapper = NULL;
     opts->config = NULL;
@@ -379,7 +388,7 @@ static RESULT setup_runtime(const struct options *opts) {
             }
 
             if (download) {
-                success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path);
+                success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path, NULL);
                 if (FAILED(success)) {
                     LOG_RESULT(LOG_ERROR, success, "Failed to download runtime");
                     continue;
@@ -577,10 +586,12 @@ static RESULT create_wineserver_wrapper(const char *config_name, const char *win
     char *server_config_name = NULL;
     RESULT result = RESULT_OK;
 
-    /* Initialize options for the wineserver */
+    server_opts.version = 0;
     server_opts.verify = 0;
     server_opts.reinstall = 0;
     server_opts.help = 0;
+    server_opts.check = 0;
+    server_opts.update = 0;
     server_opts.exec_path = strdup(wineserver_path);
     server_opts.make_wrapper = NULL;
     server_opts.config = NULL;
@@ -727,6 +738,23 @@ int main(int argc, char *argv[]) {
     if (opts.help) {
         print_usage();
         return 0;
+    }
+
+    if (opts.check || opts.update) {
+        result = handle_updates(opts.check, opts.update);
+        if (FAILED(result)) {
+            LOG_RESULT(LOG_WARNING, result, "Update unsuccessful");
+            result = RESULT_OK;
+        } else if (RESULT_CODE(result) == E_UPDATE_PERFORMED) {
+            LOG_INFO("Update installed, restarting...");
+            const char *verbs_to_remove[] = {"update", "check"};
+            remove_verbs_from_env(verbs_to_remove, 2);
+
+            execv(argv[0], argv);
+
+            LOG_ERROR("Failed to restart: %s", strerror(errno));
+            result = RESULT_OK;
+        }
     }
 
     /* Handle make_wrapper option */

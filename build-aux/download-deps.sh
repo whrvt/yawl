@@ -13,6 +13,7 @@ OPENSSL_VERSION="3.2.1"
 CURL_VERSION="8.12.1"
 GDK_PIXBUF_VERSION="2.42.12"
 LIBNOTIFY_VERSION="0.8.4"
+JSON_GLIB_VERSION="1.10.6"
 LIBARCHIVE_VERSION="3.7.7"
 
 # Parse arguments
@@ -477,6 +478,40 @@ EOF
                             -Dman=false \
                             -Dgtk_doc=false \
                             -Ddocbook_docs=disabled build . 
+        "${FLAGS_MESON[@]}" meson compile -C build
+        "${FLAGS_MESON[@]}" meson install -C build
+        ;;
+
+    json-glib)
+        if [ ! -d "json-glib-$JSON_GLIB_VERSION" ]; then
+            echo "Downloading json-glib-$JSON_GLIB_VERSION..."
+            download_file "https://gitlab.gnome.org/GNOME/json-glib/-/archive/$JSON_GLIB_VERSION/json-glib-$JSON_GLIB_VERSION.tar.gz" "json-glib.tar.gz"
+            tar -xzf json-glib.tar.gz
+            rm json-glib.tar.gz
+        fi
+
+        cd "json-glib-$JSON_GLIB_VERSION"
+
+        install -Dm755 /dev/stdin "$PWD"/pkgconfigstatic <<EOF
+#!/usr/bin/env bash
+pkg-config --static "\$@"
+EOF
+        FLAGS_MESON=("env"
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS" "CFLAGS=$CFLAGS -fno-exceptions"
+            "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+        )
+        "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
+                            --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
+                            --buildtype=minsize \
+                            --default-library=static \
+                            -Dintrospection=disabled \
+                            -Ddocumentation=disabled \
+                            -Dgtk_doc=disabled \
+                            -Dman=false \
+                            -Dtests=false \
+                            -Dconformance=false \
+                            -Dnls=disabled \
+                            -Dinstalled_tests=false build . 
         "${FLAGS_MESON[@]}" meson compile -C build
         "${FLAGS_MESON[@]}" meson install -C build
         ;;

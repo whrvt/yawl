@@ -18,7 +18,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include <ctype.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -139,11 +138,6 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         return;
 
     va_list args;
-    char timestamp[32];
-    time_t now = time(NULL);
-
-    /* Create timestamp */
-    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
     if (level == LOG_SYSTEM && notify_initialized) {
         NotifyNotification *notif;
@@ -166,6 +160,12 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         g_object_unref(G_OBJECT(notif));
         free(message);
     }
+
+    char timestamp[32];
+    time_t now = time(NULL);
+
+    /* Create timestamp */
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
     /* Output to terminal if appropriate */
     if (terminal_output) {

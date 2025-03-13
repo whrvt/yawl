@@ -75,6 +75,8 @@ typedef int32_t RESULT;
 #define E_NETWORK_ERROR 14
 #define E_PARSE_ERROR 15
 #define E_NOT_DIR 16
+#define E_UPDATE_AVAILABLE 100
+#define E_UPDATE_PERFORMED 101
 
 /* Extract components from a RESULT */
 #define RESULT_SEVERITY(result) (((result) >> 27) & 0xF)

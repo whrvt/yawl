@@ -20,6 +20,8 @@ Current useful environment variables:
   - `verify`: Verify the runtime before running
   - `reinstall`: Force reinstallation of the runtime
   - `help`: Display help and exit
+  - `check`: Check for updates to yawl (without downloading/installing)
+  - `update`: Check for, download, and install available updates
   - `exec=PATH`: Set the executable to run in the container (default: `/usr/bin/wine`)
   - `wineserver=PATH`: Set the wineserver executable path when creating a wrapper
   - `make_wrapper=NAME`: Create a configuration file and symlink for easy reuse

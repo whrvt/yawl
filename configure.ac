@@ -1,4 +1,4 @@
-AC_INIT([yawl], [0.5.6], [william@horvath.blog])
+AC_INIT([yawl], [0.6.0], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_SRCDIR([src/yawl.c])
@@ -200,15 +200,22 @@ if ! test -f "$build_prefix/lib/libcurl.a"; then
     cp -r $deps_prefix/{include,yawl/include}/curl
 fi
 
-# Download and build libnotify
-if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/libgdk_pixbuf-2.0.a" || ! test -f "$build_prefix/lib/libglib-2.0.a"; then
+# Download and build libnotify and json-glib
+if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/libjson-glib-1.0.a" || ! test -f "$build_prefix/lib/libgdk_pixbuf-2.0.a" || ! test -f "$build_prefix/lib/libglib-2.0.a"; then
     # Download and build gdk-pixbuf (only required for libnotify)
     if ! test -f "$deps_prefix/lib/libgdk_pixbuf-2.0.a"; then
         AC_MSG_NOTICE([Building gdk-pixbuf])
         sh build-aux/download-deps.sh gdk-pixbuf "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build gdk-pixbuf])
     fi
-    AC_MSG_NOTICE([Building libnotify])
-    sh build-aux/download-deps.sh libnotify "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libnotify])
+    # Download and build json-glib
+    if ! test -f "$deps_prefix/lib/libjson-glib-1.0.a"; then
+        AC_MSG_NOTICE([Building json-glib])
+        sh build-aux/download-deps.sh json-glib "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build json-glib])
+    fi
+    if ! test -f "$deps_prefix/lib/libnotify.a"; then
+        AC_MSG_NOTICE([Building libnotify])
+        sh build-aux/download-deps.sh libnotify "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libnotify])
+    fi
     cp $deps_prefix/{lib,yawl/lib}/libnotify.a
     cp $deps_prefix/{lib,yawl/lib}/libglib-2.0.a
     cp $deps_prefix/{lib,yawl/lib}/libgobject-2.0.a
@@ -220,6 +227,8 @@ if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/lib
     cp -r $deps_prefix/{include,yawl/include}/libnotify
     cp -r $deps_prefix/{include,yawl/include}/glib-2.0
     cp -r $deps_prefix/{include,yawl/include}/gdk-pixbuf-2.0
+    cp $deps_prefix/{lib,yawl/lib}/libjson-glib-1.0.a
+    cp -r $deps_prefix/{include,yawl/include}/json-glib-1.0/
 fi
 
 # Now reset everything to a prefix with only the necessary deps to build yawl
@@ -234,11 +243,15 @@ LIBARCHIVE_CFLAGS="-I$build_prefix/include -DLIBARCHIVE_STATIC"
 LIBARCHIVE_LIBS="-L$build_prefix/lib -l:libarchive.a -l:liblzma.a -l:libzstd.a -l:libz.a -l:libcrypto.a"
 LIBNOTIFY_CFLAGS="-I$build_prefix/include -I$build_prefix/include/glib-2.0 -I$build_prefix/include/gdk-pixbuf-2.0"
 LIBNOTIFY_LIBS="-L$build_prefix/lib -l:libnotify.a -l:libgdk_pixbuf-2.0.a -l:libgmodule-2.0.a -l:libgio-2.0.a -l:libgirepository-2.0.a -l:libgobject-2.0.a -l:libglib-2.0.a -l:libffi.a -lm"
+JSON_GLIB_CFLAGS="-I$build_prefix/include -I$build_prefix/include/glib-2.0 -I$build_prefix/include/gdk-pixbuf-2.0 -I$build_prefix/include/json-glib-1.0"
+JSON_GLIB_LIBS="-L$build_prefix/lib -l:libjson-glib-1.0.a -l:libgmodule-2.0.a -l:libgio-2.0.a -l:libgirepository-2.0.a -l:libgobject-2.0.a -l:libglib-2.0.a -l:libffi.a -lm"
 OPENSSL_CFLAGS="-I$build_prefix/include"
 OPENSSL_LIBS="-L$build_prefix/lib -l:libssl.a -l:libcrypto.a"
 
 AC_SUBST([LIBNOTIFY_CFLAGS])
 AC_SUBST([LIBNOTIFY_LIBS])
+AC_SUBST([JSON_GLIB_CFLAGS])
+AC_SUBST([JSON_GLIB_LIBS])
 AC_SUBST([LIBARCHIVE_CFLAGS])
 AC_SUBST([LIBARCHIVE_LIBS])
 AC_SUBST([OPENSSL_CFLAGS])
@@ -249,7 +262,7 @@ AC_SUBST([CURL_LIBS])
 build_includes="-I$musl_is_dumb -I$CLANG_INCDIR -I$build_prefix/include"
 build_cflags="$build_includes -Oz -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
                -Wno-unused-command-line-argument -Qunused-arguments"
-export CPPFLAGS="$build_includes"
+export CPPFLAGS="$build_includes -D_GNU_SOURCE"
 export CFLAGS="$build_cflags -Wno-gnu-include-next"
 export CXXFLAGS="$build_cflags"
 export LDFLAGS="-L$build_prefix/lib -static -Wl,--gc-sections,-s -fuse-ld=musl-clang"
@@ -267,6 +280,7 @@ export PKG_CONFIG_LIBDIR=""
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
 AC_CHECK_HEADERS([curl/ca_cert_embed.h], [], [AC_MSG_ERROR([Missing curl embedded certificate header, need to rebuild curl])])
+AC_CHECK_FUNCS(renameat renameat2)
 
 # Generate Makefile
 AC_CONFIG_FILES([Makefile])

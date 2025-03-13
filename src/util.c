@@ -286,7 +286,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
 
     join_paths(local_sums_path, g_yawl_dir, "SHA256SUMS");
 
-    result = download_file(hash_url, local_sums_path);
+    result = download_file(hash_url, local_sums_path, NULL);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to download hash file");
         free(local_sums_path);
@@ -331,7 +331,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
     return RESULT_OK;
 }
 
-RESULT download_file(const char *url, const char *output_path) {
+RESULT download_file(const char *url, const char *output_path, char **headers) {
     if (!url || !output_path)
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
 
@@ -350,6 +350,18 @@ RESULT download_file(const char *url, const char *output_path) {
         return result;
     }
 
+    /* Add optional headers to the req */
+    struct curl_slist *header_list = NULL;
+    if (headers) {
+        for (char **header = headers; *header; header++) {
+            header_list = curl_slist_append(header_list, *header);
+            if (!header_list)
+                LOG_WARNING("Failed to append header: %s", *header);
+        }
+        if (header_list)
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header_list);
+    }
+
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
@@ -366,6 +378,10 @@ RESULT download_file(const char *url, const char *output_path) {
     CURLcode res = curl_easy_perform(curl);
 
     fclose(fp);
+
+    if (header_list)
+        curl_slist_free_all(header_list);
+
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
@@ -457,4 +473,52 @@ cleanup:
     archive_write_close(ext);
     archive_write_free(ext);
     return result;
+}
+
+void remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
+    const char *yawl_verbs = getenv("YAWL_VERBS");
+    if (!yawl_verbs || *yawl_verbs == '\0')
+        return;
+
+    char *copy = strdup(yawl_verbs);
+    if (!copy)
+        return;
+
+    char *new_verbs = NULL;
+    char *token, *saveptr;
+    token = strtok_r(copy, ";", &saveptr);
+
+    while (token) {
+        /* Trim whitespace */
+        while (*token && isspace(*token))
+            token++;
+        char *end = token + strlen(token) - 1;
+        while (end > token && isspace(*end))
+            *end-- = '\0';
+
+        /* Check if this verb should be removed */
+        int remove_verb = 0;
+        for (int i = 0; i < num_verbs; i++) {
+            if (STRING_EQUALS(token, verbs_to_remove[i])) {
+                remove_verb = 1;
+                break;
+            }
+        }
+
+        /* If not to be removed, add it to the new list */
+        if (!remove_verb) {
+            append_sep(new_verbs, ";", token);
+        }
+
+        token = strtok_r(NULL, ";", &saveptr);
+    }
+
+    free(copy);
+
+    if (new_verbs && *new_verbs != '\0')
+        setenv("YAWL_VERBS", new_verbs, 1);
+    else
+        unsetenv("YAWL_VERBS");
+
+    free(new_verbs);
 }

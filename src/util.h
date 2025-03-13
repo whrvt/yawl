@@ -30,6 +30,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "result.h"
 
@@ -90,8 +91,10 @@ char *expand_path(const char *path);
 RESULT extract_archive(const char *archive_path, const char *extract_path);
 
 /* A helper to download a file from `url` to `output_path` with libcurl
- * Returns RESULT_OK on success, error RESULT on failure */
-RESULT download_file(const char *url, const char *output_path);
+ * Returns RESULT_OK on success, error RESULT on failure
+ * headers: NULL-terminated array of strings for HTTP headers (can be NULL)
+ */
+RESULT download_file(const char *url, const char *output_path, char **headers);
 
 /* Extract the base name from a given executable path (allocates) */
 static inline char *get_base_name(const char *path) {
@@ -105,6 +108,9 @@ static inline char *get_base_name(const char *path) {
 
     return base_name;
 }
+
+/* Remove specified verbs from YAWL_VERBS environment variable */
+void remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs);
 
 /* The global installation path, set at startup in main() */
 extern const char *g_yawl_dir;
