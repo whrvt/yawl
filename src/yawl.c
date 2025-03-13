@@ -289,14 +289,14 @@ static RESULT verify_slr_hash(const char *archive_path, const char *hash_url) {
     char actual_hash[65] = {0};
     RESULT result;
 
-    result = get_online_slr_hash(RUNTIME_ARCHIVE_NAME, hash_url, expected_hash, sizeof(expected_hash));
+    result = get_online_slr_sha256sum(RUNTIME_ARCHIVE_NAME, hash_url, expected_hash);
     if (FAILED(result)) {
         LOG_WARNING("Unexpected error while trying to obtain the hash from the SHA256SUMS file.");
         LOG_WARNING("Attempting to proceed with unverified archive.");
         return RESULT_OK;
     }
 
-    result = calculate_sha256(archive_path, actual_hash, sizeof(actual_hash));
+    result = calculate_sha256(archive_path, actual_hash);
     LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Could not calculate hash");
 
     if (!STRING_EQUALS(expected_hash, actual_hash)) {

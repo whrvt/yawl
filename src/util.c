@@ -208,7 +208,7 @@ RESULT remove_dir(const char *path) {
     return result;
 }
 
-RESULT calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len) {
+RESULT calculate_sha256(const char *file_path, char hash_str[static 65]) {
     FILE *fp = fopen(file_path, "rb");
     if (!fp) {
         RESULT result = result_from_errno();
@@ -273,11 +273,11 @@ RESULT calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_l
     for (unsigned int i = 0; i < hash_len; i++)
         snprintf(hash_str + (i * 2), 3, "%02x", hash[i]);
 
-    hash_str[hash_str_len - 1] = '\0';
+    hash_str[64] = '\0';
     return RESULT_OK;
 }
 
-RESULT get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_str, size_t hash_str_len) {
+RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, char hash_str[static 65]) {
     char *local_sums_path = NULL;
     FILE *fp = NULL;
     char line[200];
@@ -315,8 +315,8 @@ RESULT get_online_slr_hash(const char *file_name, const char *hash_url, char *ha
             *newline = '\0';
 
         if (STRING_EQUALS(file, file_name)) {
-            strncpy(hash_str, line, hash_str_len - 1);
-            hash_str[hash_str_len - 1] = '\0';
+            strncpy(hash_str, line, 64);
+            hash_str[64] = '\0';
             found = 1;
             break;
         }

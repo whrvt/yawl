@@ -73,12 +73,12 @@ RESULT remove_dir(const char *path);
 
 /* Calculates a sha256sum for a file and puts it in `hash_str`
  * Returns RESULT_OK on success, error RESULT on failure */
-RESULT calculate_sha256(const char *file_path, char *hash_str, size_t hash_str_len);
+RESULT calculate_sha256(const char *file_path, char hash_str[static 65]);
 
 /* Find the hash for file_name (e.g. SteamLinuxRuntime_sniper.tar.xz) from a SHA256SUMS hash_url
  * (i.e. ...snapshots/latest-container-runtime-public-beta/SHA256SUMS)
  * Returns RESULT_OK on success, error RESULT on failure */
-RESULT get_online_slr_hash(const char *file_name, const char *hash_url, char *hash_str, size_t hash_str_len);
+RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, char hash_str[static 65]);
 
 /* Expands shell paths like ~ to their full equivalents (using wordexp)
  * Returns a newly allocated string that must be freed by the caller
