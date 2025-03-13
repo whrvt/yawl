@@ -25,8 +25,7 @@ Makefile.in
 /stamp-h1
 /yawl
 
-/deps/prefix/
-/deps/build/
+/deps/
 
 pkgconfig/
 ossl-modules/
