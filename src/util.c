@@ -475,15 +475,13 @@ cleanup:
     return result;
 }
 
-void remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
+RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
+    RESULT result = RESULT_OK;
     const char *yawl_verbs = getenv("YAWL_VERBS");
     if (!yawl_verbs || *yawl_verbs == '\0')
-        return;
+        return MAKE_RESULT(SEV_INFO, CAT_SYSTEM, E_NOT_FOUND);
 
     char *copy = strdup(yawl_verbs);
-    if (!copy)
-        return;
-
     char *new_verbs = NULL;
     char *token, *saveptr;
     token = strtok_r(copy, ";", &saveptr);
@@ -515,10 +513,13 @@ void remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
 
     free(copy);
 
-    if (new_verbs && *new_verbs != '\0')
+    if (new_verbs && *new_verbs != '\0') {
         setenv("YAWL_VERBS", new_verbs, 1);
-    else
+    } else {
         unsetenv("YAWL_VERBS");
+        result = MAKE_RESULT(SEV_INFO, CAT_SYSTEM, E_NOT_FOUND);
+    }
 
     free(new_verbs);
+    return result;
 }

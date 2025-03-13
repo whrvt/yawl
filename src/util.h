@@ -110,7 +110,7 @@ static inline char *get_base_name(const char *path) {
 }
 
 /* Remove specified verbs from YAWL_VERBS environment variable */
-void remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs);
+RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs);
 
 /* The global installation path, set at startup in main() */
 extern const char *g_yawl_dir;

@@ -76,7 +76,7 @@ RESULT log_init(void) {
     if (log_level_env)
         log_set_level(parse_log_level(log_level_env));
 
-    notify_initialized = notify_init("yawl");
+    notify_initialized = notify_init(PROG_NAME);
 
     if (current_log_level == LOG_NONE)
         return MAKE_RESULT(SEV_SUCCESS, CAT_CONFIG, E_CANCELED);
@@ -147,7 +147,7 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         vasprintf(&message, format, args);
         va_end(args);
 
-        notif = notify_notification_new("yawl", message, "dialog-information");
+        notif = notify_notification_new(PROG_NAME, message, "dialog-information");
 
         notify_notification_set_urgency(notif, NOTIFY_URGENCY_CRITICAL);
         notify_notification_set_timeout(notif, 30000); /* 30 seconds */

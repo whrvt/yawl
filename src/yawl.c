@@ -59,14 +59,14 @@ static void print_usage(void) {
     printf("Usage: " PROG_NAME " [args_for_executable...]\n");
     printf("\n");
     printf("Environment variables:\n");
-    printf("  YAWL_VERBS       Semicolon-separated list of verbs to control yawl behavior:\n");
-    printf("                   - 'version'   Just print the version of yawl and exit\n");
+    printf("  YAWL_VERBS       Semicolon-separated list of verbs to control " PROG_NAME " behavior:\n");
+    printf("                   - 'version'   Just print the version of " PROG_NAME " and exit\n");
     printf("                   - 'verify'    Verify the runtime before running (default: only verify after install)\n");
     printf("                                 Also can be used to check for runtime updates (will be a separate option "
            "in the future)\n");
     printf("                   - 'reinstall' Force reinstallation of the runtime\n");
     printf("                   - 'help'      Display this help and exit\n");
-    printf("                   - 'check'     Check for updates to yawl (without downloading/installing)\n");
+    printf("                   - 'check'     Check for updates to " PROG_NAME " (without downloading/installing)\n");
     printf("                   - 'update'    Check for, download, and install available updates\n");
     printf("                   - 'exec=PATH' Set the executable to run in the container (default: %s)\n",
            DEFAULT_EXEC_PATH);
@@ -95,7 +95,7 @@ static void print_usage(void) {
     printf("\n");
     printf("  YAWL_LOG_FILE    Specify a custom path for the log file. By default, logs are written to:\n");
     printf("                   - Terminal output (only when running interactively)\n");
-    printf("                   - $YAWL_INSTALL_DIR/yawl.log\n");
+    printf("                   - $YAWL_INSTALL_DIR/" PROG_NAME ".log\n");
 }
 
 /* Parse a single option string and update the options structure */
@@ -609,7 +609,15 @@ static RESULT create_wineserver_wrapper(const char *config_name, const char *win
     if (FAILED(result))
         goto ws_done;
 
-    LOG_INFO("Created wineserver wrapper: yawl-%s", server_config_name);
+    char *exec_path = realpath("/proc/self/exe", NULL);
+    if (!exec_path) {
+        LOG_INFO("Created wineserver wrapper: <basename>-%s", server_config_name);
+    } else {
+        char *base_name = get_base_name(exec_path);
+        free(exec_path);
+        LOG_INFO("Created wineserver wrapper: %s-%s", base_name, server_config_name);
+        free(base_name);
+    }
 
 ws_done:
     free(server_opts.exec_path);
@@ -725,7 +733,7 @@ int main(int argc, char *argv[]) {
     if (FAILED(result) && (RESULT_CODE(result) != E_CANCELED))
         fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
 
-    LOG_DEBUG("yawl directories initialized - g_yawl_dir: %s, g_config_dir: %s", g_yawl_dir, g_config_dir);
+    LOG_DEBUG(PROG_NAME " directories initialized - g_yawl_dir: %s, g_config_dir: %s", g_yawl_dir, g_config_dir);
 
     result = parse_env_options(&opts);
     LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to parse options");
@@ -746,14 +754,19 @@ int main(int argc, char *argv[]) {
             LOG_RESULT(LOG_WARNING, result, "Update unsuccessful");
             result = RESULT_OK;
         } else if (RESULT_CODE(result) == E_UPDATE_PERFORMED) {
-            LOG_INFO("Update installed, restarting...");
-            const char *verbs_to_remove[] = {"update", "check"};
-            remove_verbs_from_env(verbs_to_remove, 2);
-
-            execv(argv[0], argv);
-
-            LOG_ERROR("Failed to restart: %s", strerror(errno));
+            LOG_INFO("Update installed.");
             result = RESULT_OK;
+
+            /* Remove update verbs from env, then restart if there are verbs remaining. */
+            const char *verbs_to_remove[] = {"update", "check"};
+            RESULT remove_result = remove_verbs_from_env(verbs_to_remove, 2);
+            if (RESULT_CODE(remove_result) != E_NOT_FOUND)
+            {
+                LOG_INFO("Additional verbs supplied, restarting...");
+                execv(argv[0], argv);
+
+                LOG_ERROR("Failed to restart: %s", strerror(errno));
+            }
         }
     }
 

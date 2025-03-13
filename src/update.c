@@ -32,13 +32,13 @@
 #include "update.h"
 #include "util.h"
 
-#define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/yawl/releases/latest"
-#define GITHUB_DOWNLOAD_URL_FORMAT "https://github.com/whrvt/yawl/releases/download/%s/yawl"
-#define UPDATE_USER_AGENT "yawl-updater/" VERSION
+#define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/" PROG_NAME "/releases/latest"
+#define GITHUB_DOWNLOAD_URL_FORMAT PACKAGE_URL "/releases/download/%s/" PROG_NAME
+#define UPDATE_USER_AGENT PROG_NAME "-updater/" VERSION
 
 /* temp files */
 #define RELEASE_INFO_FILE "latest_release.json"
-#define NEW_BINARY_FILE "yawl.new"
+#define NEW_BINARY_FILE PROG_NAME ".new"
 #define BACKUP_SUFFIX ".bak"
 
 /* Parse version string and return a comparable integer */
@@ -329,13 +329,12 @@ static RESULT replace_binary(const char *new_binary, const char *current_binary)
         LOG_DEBUG("Backup created at %s", backup_file);
         free(backup_file);
         return RESULT_OK;
-    } else {
-        LOG_DEBUG("Files on different filesystems, using copy method");
-        return copy_file(new_binary, current_binary);
     }
+    LOG_DEBUG("Files on different filesystems, using copy method");
+    return copy_file(new_binary, current_binary);
 }
 
-RESULT check_for_updates(void) {
+static RESULT check_for_updates(void) {
     char *release_file = NULL;
     char *tag_name = NULL;
     char *download_url = NULL;
@@ -390,7 +389,7 @@ RESULT check_for_updates(void) {
     return MAKE_RESULT(SEV_INFO, CAT_GENERAL, E_UPDATE_AVAILABLE);
 }
 
-RESULT perform_update(void) {
+static RESULT perform_update(void) {
     char *release_file = NULL;
     char download_url[1024] = {0};
     char *temp_binary = NULL;
@@ -466,6 +465,8 @@ RESULT perform_update(void) {
 
     LOG_INFO("Installing update...");
     result = replace_binary(temp_binary, self_path);
+    if (SUCCEEDED(result))
+        result = MAKE_RESULT(SEV_INFO, CAT_RUNTIME, E_UPDATE_PERFORMED);
 
 cleanup_update:
     unlink(release_file);
@@ -475,7 +476,7 @@ cleanup_update:
     free(download_dir);
     free(temp_binary);
 
-    return MAKE_RESULT(SEV_INFO, CAT_RUNTIME, E_UPDATE_PERFORMED);
+    return result;
 }
 
 /* Handle all update operations based on command line flags */

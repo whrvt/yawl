@@ -22,16 +22,16 @@
 
 #include "result.h"
 
-/* Check if a new version is available and print information about it
+/* (private for now) Check if a new version is available and print information about it
  * Returns RESULT_OK if no update is available or if the update check was successful
  * Returns error RESULT on failure
  */
-RESULT check_for_updates(void);
+/* RESULT check_for_updates(void); */
 
-/* Download and apply available update
+/* (private for now) Download and apply available update
  * Returns RESULT_OK on success, error RESULT on failure
  */
-RESULT perform_update(void);
+/* RESULT perform_update(void); */
 
 /* Handle update operations based on command line options
  * check_only: 1 = just check for updates, 0 = don't check
