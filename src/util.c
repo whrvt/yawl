@@ -172,7 +172,7 @@ RESULT remove_dir(const char *path) {
     RESULT result = RESULT_OK;
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        if (STRING_EQUALS(entry->d_name, ".") || STRING_EQUALS(entry->d_name, ".."))
             continue;
 
         char *full_path = NULL;
@@ -314,7 +314,7 @@ RESULT get_online_slr_hash(const char *file_name, const char *hash_url, char *ha
         if (newline)
             *newline = '\0';
 
-        if (strcmp(file, file_name) == 0) {
+        if (STRING_EQUALS(file, file_name)) {
             strncpy(hash_str, line, hash_str_len - 1);
             hash_str[hash_str_len - 1] = '\0';
             found = 1;

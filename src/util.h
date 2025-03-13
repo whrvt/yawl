@@ -38,6 +38,17 @@
 
 #define BUFFER_SIZE 8192
 
+/* case sensitive */
+#define STRING_EQUALS(string1, string2) (strcmp(string1, string2) == 0)
+/* case sensitive */
+#define STRING_PREFIX(string, prefix) (strncmp(string, prefix, sizeof(prefix) - 1UL) == 0)
+/* lowercase string equals (case insensitive) */
+#define LCSTRING_EQUALS(string1, string2) (strcasecmp(string1, string2) == 0)
+/* lowercase string prefix (case insensitive) */
+#define LCSTRING_PREFIX(string, prefix) (strncasecmp(string, prefix, sizeof(prefix) - 1UL) == 0)
+
+#define STRING_AFTER_PREFIX(string, prefix) (string + (sizeof(prefix) - 1UL))
+
 void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, ...);
 
 #define COUNT_JOIN_ARGS(...) (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *))

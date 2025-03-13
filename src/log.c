@@ -43,28 +43,21 @@ static const char *level_colors[] = {"\0", COLOR_RED, COLOR_YELLOW, COLOR_GREEN,
 
 /* Parse log level from string */
 static log_level_t parse_log_level(const char *level_str) {
-    if (!level_str)
+    if (!level_str || (strlen(level_str) > (sizeof("warning") - 1UL))) /* longest error level string */
         return LOG_INFO;
 
-    char *level_copy = strdup(level_str);
-
-    unsigned long pos = 0;
-    for (char *p = level_copy; *p && pos++ < sizeof("warning"); p++)
-        *p = tolower(*p);
-
     log_level_t level = LOG_INFO;
-    if (strncmp(level_copy, "none", sizeof("none")) == 0)
+    if (LCSTRING_EQUALS(level_str, "none"))
         level = LOG_NONE;
-    else if (strncmp(level_copy, "error", sizeof("error")) == 0)
+    else if (LCSTRING_EQUALS(level_str, "error"))
         level = LOG_ERROR;
-    else if (strncmp(level_copy, "warning", sizeof("warning")) == 0)
+    else if (LCSTRING_EQUALS(level_str, "warning"))
         level = LOG_WARNING;
-    else if (strncmp(level_copy, "info", sizeof("info")) == 0)
+    else if (LCSTRING_EQUALS(level_str, "info"))
         level = LOG_INFO;
-    else if (strncmp(level_copy, "debug", sizeof("debug")) == 0)
+    else if (LCSTRING_EQUALS(level_str, "debug"))
         level = LOG_DEBUG;
 
-    free(level_copy);
     return level;
 }
 

@@ -100,26 +100,28 @@ static RESULT parse_option(const char *option, struct options *opts) {
     if (!option || !opts || !option[0])
         return RESULT_OK; /* Skip empty options, not an error */
 
-    if (strncmp(option, "version", 7) == 0) {
+    if (LCSTRING_EQUALS(option, "version")) {
         opts->version = 1;
-    } else if (strncmp(option, "verify", 6) == 0) {
+    } else if (LCSTRING_EQUALS(option, "verify")) {
         opts->verify = 1;
-    } else if (strncmp(option, "reinstall", 9) == 0) {
+    } else if (LCSTRING_EQUALS(option, "reinstall")) {
         opts->reinstall = 1;
-    } else if (strncmp(option, "help", 4) == 0) {
+    } else if (LCSTRING_EQUALS(option, "help")) {
         opts->help = 1;
-    } else if (strncmp(option, "exec=", 5) == 0) {
+    } else if (LCSTRING_PREFIX(option, "exec=")) {
         free(opts->exec_path);
-        opts->exec_path = expand_path(option + 5);
-    } else if (strncmp(option, "make_wrapper=", 13) == 0) {
+        opts->exec_path = expand_path(STRING_AFTER_PREFIX(option, "exec="));
+        if (!opts->exec_path)
+            opts->exec_path = strdup(DEFAULT_EXEC_PATH);
+    } else if (LCSTRING_PREFIX(option, "make_wrapper=")) {
         free(opts->make_wrapper);
-        opts->make_wrapper = strdup(option + 13);
-    } else if (strncmp(option, "config=", 7) == 0) {
+        opts->make_wrapper = strdup(STRING_AFTER_PREFIX(option, "make_wrapper="));
+    } else if (LCSTRING_PREFIX(option, "config=")) {
         free(opts->config);
-        opts->config = strdup(option + 7);
-    } else if (strncmp(option, "wineserver=", 11) == 0) {
+        opts->config = strdup(STRING_AFTER_PREFIX(option, "config="));
+    } else if (LCSTRING_PREFIX(option, "wineserver=")) {
         free(opts->wineserver);
-        opts->wineserver = expand_path(option + 11);
+        opts->wineserver = expand_path(STRING_AFTER_PREFIX(option, "wineserver="));
     } else {
         return MAKE_RESULT(SEV_WARNING, CAT_CONFIG, E_UNKNOWN); /* Unknown option */
     }
@@ -297,7 +299,7 @@ static RESULT verify_slr_hash(const char *archive_path, const char *hash_url) {
     result = calculate_sha256(archive_path, actual_hash, sizeof(actual_hash));
     LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Could not calculate hash");
 
-    if (strcmp(expected_hash, actual_hash) != 0) {
+    if (!STRING_EQUALS(expected_hash, actual_hash)) {
         LOG_WARNING("Archive hash mismatch.");
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_INVALID_ARG);
     }
@@ -411,7 +413,7 @@ static char *get_top_libdir(const char *exec_path) {
         *last_slash = '\0';
 
     last_slash = strrchr(dirname, '/');
-    if (last_slash && strcmp(last_slash, "/bin") == 0)
+    if (last_slash && STRING_EQUALS(last_slash, "/bin"))
         *last_slash = '\0';
     else
         free(dirname);
@@ -503,7 +505,7 @@ static RESULT create_config_file(const char *config_name, const struct options *
 
     /* Write the current configuration */
     /* TODO: maybe support adding PATHs and other env vars */
-    if (opts->exec_path && strcmp(opts->exec_path, DEFAULT_EXEC_PATH) != 0)
+    if (opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH))
         fprintf(fp, "exec=%s\n", opts->exec_path);
 
     fclose(fp);
@@ -783,7 +785,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* TODO: factor and allow setting paths from config */
-    if (opts.exec_path && strcmp(opts.exec_path, DEFAULT_EXEC_PATH) != 0) {
+    if (opts.exec_path && !STRING_EQUALS(opts.exec_path, DEFAULT_EXEC_PATH)) {
         char *exec_dir = strdup(opts.exec_path);
         if (exec_dir) {
             char *last_slash = strrchr(exec_dir, '/');
