@@ -144,7 +144,6 @@ RESULT ensure_dir(const char *path) {
         return MAKE_RESULT(SEV_ERROR, CAT_FILESYSTEM, E_INVALID_ARG);
 
     char *expanded_path = expand_path(path);
-    RETURN_NULL_CHECK(expanded_path, "Failed to expand path");
 
     RESULT ret = RESULT_OK;
     struct stat st;
@@ -286,7 +285,6 @@ RESULT get_online_slr_hash(const char *file_name, const char *hash_url, char *ha
     RESULT result = RESULT_OK;
 
     join_paths(local_sums_path, g_yawl_dir, "SHA256SUMS");
-    RETURN_NULL_CHECK(local_sums_path, "Failed to allocate memory for hash file path");
 
     result = download_file(hash_url, local_sums_path);
     if (FAILED(result)) {

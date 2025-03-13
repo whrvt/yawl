@@ -47,8 +47,6 @@ static log_level_t parse_log_level(const char *level_str) {
         return LOG_INFO;
 
     char *level_copy = strdup(level_str);
-    if (!level_copy)
-        return LOG_INFO;
 
     unsigned long pos = 0;
     for (char *p = level_copy; *p && pos++ < sizeof("warning"); p++)
@@ -86,8 +84,6 @@ RESULT log_init(void) {
         log_file_path = strdup(log_file_env);
     else
         join_paths(log_file_path, g_yawl_dir, PROG_NAME ".log");
-
-    RETURN_NULL_CHECK(log_file_path, "Failed to allocate memory for log file path");
 
     if (log_file_path || !terminal_output) {
         log_file = fopen(log_file_path, "a");

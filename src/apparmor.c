@@ -69,14 +69,13 @@ static RESULT test_container(const char *entry_point) {
     free(stdout_file);
     free(stderr_file);
 
-    if (ret != 0)
-        LOG_WARNING("Container test exited with code %d", WEXITSTATUS(ret));
-
-    if (apparmor_issue)
+    if (apparmor_issue) {
         LOG_DEBUG("AppArmor restriction detected");
-
-    if (ret != 0 || apparmor_issue)
         return MAKE_RESULT(SEV_ERROR, CAT_APPARMOR, E_ACCESS_DENIED);
+    } else if (ret != 0) {
+        LOG_WARNING("Container test exited with code %d", WEXITSTATUS(ret));
+        return MAKE_RESULT(SEV_ERROR, CAT_APPARMOR, E_UNKNOWN);
+    }
 
     return RESULT_OK;
 }
@@ -87,7 +86,6 @@ static RESULT write_temp_apparmor_profile(char **temp_path) {
 
     /* Create a temporary file in the yawl directory */
     join_paths(*temp_path, g_yawl_dir, APPARMOR_PROFILE_NAME ".tmp");
-    RETURN_NULL_CHECK(*temp_path, "Failed to allocate memory for temporary AppArmor profile path");
 
     LOG_DEBUG("Writing temporary AppArmor profile to: %s", *temp_path);
 
@@ -128,15 +126,10 @@ static RESULT install_apparmor_profile(void) {
     }
 
     LOG_INFO("Installing AppArmor profile to enable container functionality...");
-
-    /* These messages are interactive prompts for the user, so we keep them as console output */
-    /* But we also log them to maintain a complete log record */
-
-    /* Display important user instructions to the console */
-    printf("Please enter your password when prompted. This just installs a file to\n");
-    printf("    /etc/apparmor.d/, which gives enough permissions to the pressure-vessel container\n");
-    printf("    to function properly. If you don't trust me, follow this guide to install it manually:\n");
-    printf("    https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424\n");
+    LOG_INFO("Please enter your password when prompted. This just installs a file to");
+    LOG_INFO("    /etc/apparmor.d/, which gives enough permissions to the pressure-vessel container");
+    LOG_INFO("    to function properly. If you don't trust me, follow this guide to install it manually:");
+    LOG_INFO("    https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
 
     /* Create the command to install the profile */
     append_sep(install_cmd, " ", "pkexec", "sh", "-c", "'mkdir -p " APPARMOR_DIR " && cp", temp_profile_path,
@@ -167,17 +160,20 @@ RESULT handle_apparmor(const char *entry_point) {
     if (SUCCEEDED(result)) {
         LOG_DEBUG("Container test passed, no AppArmor issues detected");
         return RESULT_OK;
+    } else if (RESULT_CODE(result) == E_UNKNOWN) {
+        LOG_DEBUG("Container test returned an error unrelated to AppArmor, returning OK");
+        return RESULT_OK;
     }
 
     LOG_INFO("Detected AppArmor restrictions preventing container operation");
     /* Try to install the AppArmor profile */
     result = install_apparmor_profile();
     if (FAILED(result)) {
-        LOG_RESULT(LOG_WARNING, result, "Failed to install AppArmor Profile");
+        LOG_RESULT(LOG_DEBUG, result, "Failed to install AppArmor Profile");
 
-        printf("Warning: Failed to install AppArmor profile. Container may not work correctly.\n");
-        printf("Please follow this guide to manually install the AppArmor profile:\n");
-        printf("   https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424\n");
+        LOG_ERROR("Failed to install AppArmor profile. Container may not work correctly.");
+        LOG_ERROR("Please follow this guide to manually install the AppArmor profile:");
+        LOG_ERROR("   https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
         return result;
     }
 
@@ -185,11 +181,10 @@ RESULT handle_apparmor(const char *entry_point) {
     LOG_DEBUG("Testing container again after AppArmor profile installation");
     result = test_container(entry_point);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_WARNING, result, "Container still not working after AppArmor profile installation");
+        LOG_RESULT(LOG_DEBUG, result, "Container still not working after AppArmor profile installation");
 
-        /* Keep console output for user feedback */
-        printf("Warning: Container still not working after AppArmor profile installation.\n");
-        printf("You may need to restart the system for AppArmor changes to take effect.\n");
+        LOG_ERROR("Container still not working after AppArmor profile installation.");
+        LOG_ERROR("You may need to restart the system for AppArmor changes to take effect.");
         return result;
     }
 

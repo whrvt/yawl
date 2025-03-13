@@ -110,30 +110,16 @@ static RESULT parse_option(const char *option, struct options *opts) {
         opts->help = 1;
     } else if (strncmp(option, "exec=", 5) == 0) {
         free(opts->exec_path);
-
         opts->exec_path = expand_path(option + 5);
-        if (!opts->exec_path) {
-            LOG_ERROR("Failed to expand exec path: %s", option + 5);
-            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
-        }
     } else if (strncmp(option, "make_wrapper=", 13) == 0) {
         free(opts->make_wrapper);
         opts->make_wrapper = strdup(option + 13);
-        if (!opts->make_wrapper)
-            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
     } else if (strncmp(option, "config=", 7) == 0) {
         free(opts->config);
         opts->config = strdup(option + 7);
-        if (!opts->config)
-            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
     } else if (strncmp(option, "wineserver=", 11) == 0) {
         free(opts->wineserver);
-
         opts->wineserver = expand_path(option + 11);
-        if (!opts->wineserver) {
-            LOG_ERROR("Failed to expand wineserver path: %s", option + 11);
-            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
-        }
     } else {
         return MAKE_RESULT(SEV_WARNING, CAT_CONFIG, E_UNKNOWN); /* Unknown option */
     }
@@ -151,20 +137,11 @@ static RESULT parse_env_options(struct options *opts) {
     opts->config = NULL;
     opts->wineserver = NULL;
 
-    if (!opts->exec_path)
-        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
-
     const char *verbs = getenv("YAWL_VERBS");
     if (!verbs)
         return RESULT_OK;
 
     char *verbs_copy = strdup(verbs);
-    if (!verbs_copy) {
-        free(opts->exec_path);
-        opts->exec_path = NULL;
-        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
-    }
-
     char *token = strtok(verbs_copy, ";");
     RESULT result = RESULT_OK;
 
@@ -231,7 +208,6 @@ static RESULT verify_runtime(const char *runtime_path) {
 
     /* First, a lightweight check for VERSIONS.txt (same as the SLR shell script) */
     join_paths(versions_txt_path, runtime_path, "VERSIONS.txt");
-    RETURN_NULL_CHECK(versions_txt_path, "Failed to allocate memory for VERSIONS.txt path");
 
     if (access(versions_txt_path, F_OK) != 0) {
         LOG_ERROR("VERSIONS.txt not found. Runtime may be corrupt or incomplete.");
@@ -242,7 +218,6 @@ static RESULT verify_runtime(const char *runtime_path) {
 
     /* Check if pv-verify exists */
     join_paths(pv_verify_path, runtime_path, "pressure-vessel/bin/pv-verify");
-    RETURN_NULL_CHECK(pv_verify_path, "Failed to allocate memory for pv-verify path");
 
     if (access(pv_verify_path, X_OK) != 0) {
         LOG_ERROR("pv-verify not found. Runtime may be corrupt or incomplete.");
@@ -252,16 +227,8 @@ static RESULT verify_runtime(const char *runtime_path) {
 
     char *cmd = NULL;
     append_sep(cmd, " ", pv_verify_path, "--quiet");
-    RETURN_NULL_CHECK(cmd, "Failed to allocate memory for command string");
 
     char *old_cwd = getcwd(NULL, 0);
-    if (!old_cwd) {
-        result = MAKE_RESULT(SEV_ERROR, CAT_FILESYSTEM, E_OUT_OF_MEMORY);
-        LOG_RESULT(LOG_ERROR, result, "Failed to get current working directory");
-        free(pv_verify_path);
-        free(cmd);
-        return result;
-    }
 
     if (chdir(runtime_path) != 0) {
         result = result_from_errno();
@@ -277,7 +244,12 @@ static RESULT verify_runtime(const char *runtime_path) {
 
     /* Restore directory */
     if (chdir(old_cwd) != 0) {
-        LOG_WARNING("Failed to restore directory: %s", strerror(errno));
+        result = result_from_errno();
+        LOG_RESULT(LOG_ERROR, result, "Failed to restore directory");
+        free(old_cwd);
+        free(pv_verify_path);
+        free(cmd);
+        return result;
     }
     free(old_cwd);
     free(cmd);
@@ -290,7 +262,6 @@ static RESULT verify_runtime(const char *runtime_path) {
 
     char *entry_point = NULL;
     join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
-    RETURN_NULL_CHECK(entry_point, "Failed to allocate memory for entry point path");
 
     if (access(entry_point, X_OK) != 0) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
@@ -342,10 +313,7 @@ static RESULT setup_runtime(const struct options *opts) {
     struct stat st;
 
     join_paths(archive_path, g_yawl_dir, RUNTIME_ARCHIVE_NAME);
-    RETURN_NULL_CHECK(archive_path, "Failed to allocate memory for archive path");
-
     join_paths(runtime_path, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
-    RETURN_NULL_CHECK(runtime_path, "Failed to allocate memory for runtime path");
 
     if (!(stat(runtime_path, &st) == 0 && S_ISDIR(st.st_mode))) {
         LOG_INFO("Installing runtime...");
@@ -437,21 +405,17 @@ static RESULT setup_runtime(const struct options *opts) {
 
 static char *get_top_libdir(const char *exec_path) {
     char *dirname = strdup(exec_path);
-    if (!dirname)
-        return NULL;
 
     char *last_slash = strrchr(dirname, '/');
     if (last_slash)
         *last_slash = '\0';
 
     last_slash = strrchr(dirname, '/');
-    if (last_slash && strcmp(last_slash, "/bin") == 0) {
+    if (last_slash && strcmp(last_slash, "/bin") == 0)
         *last_slash = '\0';
-        return dirname;
-    } else {
+    else
         free(dirname);
-        return NULL;
-    }
+    return dirname;
 }
 
 static char *build_library_paths(const char *exec_path) {
@@ -526,8 +490,6 @@ static RESULT create_config_file(const char *config_name, const struct options *
 
     /* Build the config file path */
     join_paths(config_path, g_config_dir, config_name);
-    RETURN_NULL_CHECK(config_path, "Failed to allocate memory for config path");
-
     append_sep(config_path, "", CONFIG_EXTENSION);
 
     /* Open the config file */
@@ -569,15 +531,9 @@ static RESULT create_symlink(const char *config_name) {
 
     /* Extract the base name and directory */
     base_name = get_base_name(exec_path);
-    RETURN_NULL_CHECK(base_name, "Failed to extract base name from executable path");
 
     /* Create a copy of exec_path to extract the directory */
     exec_dir = strdup(exec_path);
-    if (!exec_dir) {
-        free(exec_path);
-        free(base_name);
-        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
-    }
 
     char *last_slash = strrchr(exec_dir, '/');
     if (last_slash)
@@ -585,13 +541,11 @@ static RESULT create_symlink(const char *config_name) {
 
     /* Build the symlink path */
     join_paths(symlink_path, exec_dir, base_name);
-    RETURN_NULL_CHECK(symlink_path, "Failed to allocate memory for symlink base path");
-
     append_sep(symlink_path, "-", config_name);
 
     /* Create the symlink */
     if (access(symlink_path, F_OK) == 0) {
-        LOG_WARNING("Symlink already exists: %s", symlink_path);
+        LOG_DEBUG("Symlink already exists: %s", symlink_path);
         unlink(symlink_path);
     }
 
@@ -622,18 +576,12 @@ static RESULT create_wineserver_wrapper(const char *config_name, const char *win
     server_opts.reinstall = 0;
     server_opts.help = 0;
     server_opts.exec_path = strdup(wineserver_path);
-    RETURN_NULL_CHECK(server_opts.exec_path, "Failed to allocate memory for wineserver path");
-
     server_opts.make_wrapper = NULL;
     server_opts.config = NULL;
     server_opts.wineserver = NULL;
 
     /* Create the config name: append "server" to the base name */
     server_config_name = strdup(config_name);
-    if (!server_config_name) {
-        free(server_opts.exec_path);
-        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
-    }
     append_sep(server_config_name, "", "server");
 
     /* Create the wineserver config file */
@@ -680,17 +628,13 @@ static RESULT load_config(const char *config_name, struct options *opts) {
     /* First, try using the name directly as a path */
     if (access(config_name, F_OK) == 0) {
         config_path = strdup(config_name);
-        RETURN_NULL_CHECK(config_path, "Failed to allocate memory for config path");
     } else {
         /* Build the config file path in the standard location */
         join_paths(config_path, g_config_dir, config_name);
-        RETURN_NULL_CHECK(config_path, "Failed to allocate memory for config path");
 
         /* Add extension if not already present */
-        if (!strstr(config_name, CONFIG_EXTENSION)) {
+        if (!strstr(config_name, CONFIG_EXTENSION))
             append_sep(config_path, "", CONFIG_EXTENSION);
-            RETURN_NULL_CHECK(config_path, "Failed to append extension to config path");
-        }
 
         /* Check if the file exists */
         if (access(config_path, F_OK) != 0) {
@@ -816,7 +760,6 @@ int main(int argc, char *argv[]) {
     }
 
     char **new_argv = calloc(argc + 4, sizeof(char *));
-    RETURN_NULL_CHECK(new_argv, "Failed to allocate memory for command string");
     new_argv[0] = entry_point;
     new_argv[1] = "--verb=waitforexitandrun";
     new_argv[2] = "--";

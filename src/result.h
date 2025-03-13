@@ -105,16 +105,6 @@ const char *result_to_string(RESULT result);
         }                                                                                                              \
     } while (0)
 
-/* Free memory and return error if pointer is NULL */
-#define RETURN_NULL_CHECK(ptr, message)                                                                                \
-    do {                                                                                                               \
-        if (!(ptr)) {                                                                                                  \
-            RESULT _r = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);                                          \
-            LOG_RESULT(LOG_ERROR, _r, message);                                                                        \
-            return _r;                                                                                                 \
-        }                                                                                                              \
-    } while (0)
-
 /* (unused) Propagate error code but use a different category */
 /* #define PROPAGATE_ERROR_CAT(result, new_cat)                                                                           \
     (FAILED(result) ? MAKE_RESULT(RESULT_SEVERITY(result), new_cat, RESULT_CODE(result)) : (result))
