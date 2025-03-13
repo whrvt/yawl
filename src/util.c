@@ -114,7 +114,7 @@ char *expand_path(const char *path) {
     return result;
 }
 
-static RESULT create_directory_tree(char *path) {
+static inline RESULT create_directory_tree(char *path) {
     /* Skip leading slashes */
     char *p = path;
     if (*p == '/')

@@ -150,7 +150,7 @@ static RESULT parse_env_options(struct options *opts) {
     while (token) {
         result = parse_option(token, opts);
         if (FAILED(result)) {
-            if (RESULT_CODE(result) != E_UNKNOWN) {
+            if (RESULT_SEVERITY(result) > SEV_WARNING) {
                 free(verbs_copy);
                 return result;
             }
@@ -182,6 +182,8 @@ static const char *setup_prog_dir(void) {
     RESULT ensure_result = ensure_dir(result);
     if (FAILED(ensure_result)) {
         fprintf(stderr, "Error: Failed to create or access program directory: %s\n", result_to_string(ensure_result));
+        if (result)
+            fprintf(stderr, "Attempted directory: %s\n", result);
         free(result);
         result = NULL;
     }
@@ -196,6 +198,8 @@ static const char *setup_config_dir(void) {
     RESULT ensure_result = ensure_dir(result);
     if (FAILED(ensure_result)) {
         fprintf(stderr, "Error: Failed to create or access config directory: %s\n", result_to_string(ensure_result));
+        if (result)
+            fprintf(stderr, "Attempted directory: %s\n", result);
         free(result);
         result = NULL;
     }
@@ -545,12 +549,12 @@ static RESULT create_symlink(const char *config_name) {
     join_paths(symlink_path, exec_dir, base_name);
     append_sep(symlink_path, "-", config_name);
 
-    /* Create the symlink */
     if (access(symlink_path, F_OK) == 0) {
         LOG_DEBUG("Symlink already exists: %s", symlink_path);
         unlink(symlink_path);
     }
 
+    /* Create the symlink */
     if (symlink(exec_path, symlink_path) != 0) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to create symlink");
@@ -586,16 +590,17 @@ static RESULT create_wineserver_wrapper(const char *config_name, const char *win
     server_config_name = strdup(config_name);
     append_sep(server_config_name, "", "server");
 
-    /* Create the wineserver config file */
     result = create_config_file(server_config_name, &server_opts);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to create wineserver config file");
+    if (FAILED(result))
+        goto ws_done;
 
-    /* Create the wineserver symlink */
     result = create_symlink(server_config_name);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to create wineserver symlink");
+    if (FAILED(result))
+        goto ws_done;
 
     LOG_INFO("Created wineserver wrapper: yawl-%s", server_config_name);
 
+ws_done:
     free(server_opts.exec_path);
     free(server_config_name);
     return result;
