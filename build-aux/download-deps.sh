@@ -11,6 +11,8 @@ XZ_VERSION="5.6.4"
 ZSTD_VERSION="1.5.7"
 OPENSSL_VERSION="3.2.1"
 CURL_VERSION="8.12.1"
+GDK_PIXBUF_VERSION="2.42.12"
+LIBNOTIFY_VERSION="0.8.4"
 LIBARCHIVE_VERSION="3.7.7"
 
 # Parse arguments
@@ -374,6 +376,109 @@ case "$LIB" in
         # (contains the `const unsigned char curl_ca_embed[]` blob of data)
         echo "#pragma once" > "$PREFIX/include/curl/ca_cert_embed.h"
         cat "src/tool_ca_embed.c" >> "$PREFIX/include/curl/ca_cert_embed.h"
+        ;;
+
+    gdk-pixbuf)
+        if [ ! -d "gdk-pixbuf-$GDK_PIXBUF_VERSION" ]; then
+            echo "Downloading gdk-pixbuf-$GDK_PIXBUF_VERSION (required for libnotify)..."
+            download_file "https://gitlab.gnome.org/GNOME/gdk-pixbuf/-/archive/$GDK_PIXBUF_VERSION/gdk-pixbuf-$GDK_PIXBUF_VERSION.tar.gz" "gdk-pixbuf.tar.gz"
+            tar -xzf gdk-pixbuf.tar.gz
+            rm gdk-pixbuf.tar.gz
+        fi
+
+        cd "gdk-pixbuf-$GDK_PIXBUF_VERSION"
+
+        # meson is absolutely UNREAL
+        sed -i 's|.*thumbnailer.*||g' meson.build
+        install -Dm755 /dev/stdin "$PWD"/pkgconfigstatic <<EOF
+#!/usr/bin/env bash
+pkg-config --static "\$@"
+EOF
+        rm -f "$PREFIX/lib/pkgconfig/{gthread*.pc,gobject*.pc,glib*.pc,gmodule-no-export*.pc,gmodule-export*.pc,gmodule*.pc,girepository*.pc,gio-unix*.pc,gio*.pc,gdk-pixbuf*.pc}"
+        find "${PREFIX:?}"/ '(' -iregex ".*deps/prefix.*glib.*" -o -iregex ".*deps/prefix.*ffi.*" -o -iregex ".*deps/prefix.*pcre.*" ')' -exec rm -rf '{''}' '+'
+        FLAGS_MESON=("env"
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS" "CFLAGS=$CFLAGS -fno-exceptions"
+            "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+        )
+        "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
+                            --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
+                            --buildtype=minsize \
+                            --default-library=static \
+                            -Dpng=disabled \
+                            -Dtiff=disabled \
+                            -Djpeg=disabled \
+                            -Dgif=disabled \
+                            -Dothers=disabled \
+                            -Dbuiltin_loaders=none \
+                            -Dgtk_doc=false \
+                            -Ddocs=false \
+                            -Dintrospection=disabled \
+                            -Dman=false \
+                            -Drelocatable=false \
+                            -Dnative_windows_loaders=false \
+                            -Dtests=false \
+                            -Dinstalled_tests=false \
+                            -Dgio_sniffing=false \
+                            -Dglib:libmount=disabled \
+                            -Dglib:man=false \
+                            -Dglib:man-pages=disabled \
+                            -Dglib:dtrace=disabled \
+                            -Dglib:systemtap=disabled \
+                            -Dglib:sysprof=disabled \
+                            -Dglib:documentation=false \
+                            -Dglib:gtk_doc=false \
+                            -Dglib:tests=false \
+                            -Dglib:installed_tests=false \
+                            -Dglib:nls=disabled \
+                            -Dglib:bsymbolic_functions=false \
+                            -Dglib:oss_fuzz=disabled \
+                            -Dglib:glib_debug=disabled \
+                            -Dglib:glib_assert=false \
+                            -Dglib:glib_checks=false \
+                            -Dglib:libelf=disabled \
+                            -Dglib:introspection=disabled build .
+        "${FLAGS_MESON[@]}" meson compile -C build
+        "${FLAGS_MESON[@]}" meson install -C build || true # WTF?
+
+        # PISS OFF
+        find "$PWD"/ -iregex ".*meson-private.*\.pc" -execdir cp '{''}' "$PREFIX/lib/pkgconfig" ';'
+        find "$PWD/build/subprojects/glib"/{gio,gobject} -type f -executable -execdir cp '{''}' "$PREFIX/lib" ';'
+        find "$PWD/build/subprojects/glib/glib"/ -type f -iregex ".*\.h" -execdir cp '{''}' "$PREFIX/include/glib-2.0/" ';'
+        find "$PWD/build/gdk-pixbuf"/ -type f -iregex ".*\.h" -execdir cp '{''}' "$PREFIX/include/gdk-pixbuf-2.0/gdk-pixbuf" ';'
+        ;;
+
+    libnotify)
+        if [ ! -d "libnotify-$LIBNOTIFY_VERSION" ]; then
+            echo "Downloading libnotify-$LIBNOTIFY_VERSION..."
+            download_file "https://github.com/GNOME/libnotify/archive/refs/tags/$LIBNOTIFY_VERSION.tar.gz" "libnotify.tar.gz"
+            tar -xzf libnotify.tar.gz
+            rm libnotify.tar.gz
+        fi
+
+        cd "libnotify-$LIBNOTIFY_VERSION"
+
+        sed -i 's|.*subdir.*tools.*||g' meson.build
+        sed -i 's|libnotify_lib = shared|libnotify_lib = static|g' "$PWD/libnotify/meson.build"
+        sed -i 's|.*LT_CURRENT.*||g' "$PWD/libnotify/meson.build"
+        install -Dm755 /dev/stdin "$PWD"/pkgconfigstatic <<EOF
+#!/usr/bin/env bash
+pkg-config --static "\$@"
+EOF
+        FLAGS_MESON=("env"
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS" "CFLAGS=$CFLAGS -fno-exceptions"
+            "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+        )
+        "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
+                            --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
+                            --buildtype=minsize \
+                            --default-library=static \
+                            -Dtests=false \
+                            -Dintrospection=disabled \
+                            -Dman=false \
+                            -Dgtk_doc=false \
+                            -Ddocbook_docs=disabled build . 
+        "${FLAGS_MESON[@]}" meson compile -C build
+        "${FLAGS_MESON[@]}" meson install -C build
         ;;
 
     *)

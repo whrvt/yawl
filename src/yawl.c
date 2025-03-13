@@ -154,7 +154,7 @@ static RESULT parse_env_options(struct options *opts) {
                 free(verbs_copy);
                 return result;
             }
-            LOG_WARNING("Unknown YAWL_VERBS token: %s", token);
+            LOG_INFO("Unknown YAWL_VERBS token: %s", token);
             result = RESULT_OK;
         } else if (opts->version || opts->help) {
             LOG_DEBUG("Returning early, got %s token", opts->version ? "version" : "help");
@@ -673,11 +673,11 @@ static RESULT load_config(const char *config_name, struct options *opts) {
 
         RESULT option_result = parse_option(line, opts);
         if (FAILED(option_result)) {
-            if (RESULT_CODE(option_result) != E_UNKNOWN) {
+            if (RESULT_SEVERITY(option_result) > SEV_WARNING) {
                 result = option_result;
                 break;
             }
-            LOG_WARNING("Unknown configuration option: %s", line);
+            LOG_INFO("Unknown configuration option: %s", line);
         }
     }
 

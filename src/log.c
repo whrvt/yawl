@@ -18,28 +18,36 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "log.h"
-#include "util.h"
-
 #include <ctype.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wextra-semi"
+#define G_LOG_DOMAIN "libnotify"
+#include "libnotify/notify.h"
+#pragma clang diagnostic pop
+
+#include "log.h"
+#include "util.h"
+
 static FILE *log_file = NULL;
 static log_level_t current_log_level = LOG_INFO;
 static int terminal_output = 0;
+static gboolean notify_initialized = FALSE;
 
 /* Color codes for terminal output */
 #define COLOR_RESET "\033[0m"
+#define COLOR_SYSTEM "\033[36m"
 #define COLOR_RED "\033[31m"
 #define COLOR_YELLOW "\033[33m"
 #define COLOR_GREEN "\033[32m"
 #define COLOR_BLUE "\033[34m"
 
-static const char *level_strings[] = {"\0", "ERROR", "WARNING", "INFO", "DEBUG"};
-static const char *level_colors[] = {"\0", COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_BLUE};
+static const char *level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG"};
+static const char *level_colors[] = {"\0", COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_BLUE};
 
 /* Parse log level from string */
 static log_level_t parse_log_level(const char *level_str) {
@@ -68,6 +76,8 @@ RESULT log_init(void) {
     const char *log_level_env = getenv("YAWL_LOG_LEVEL");
     if (log_level_env)
         log_set_level(parse_log_level(log_level_env));
+
+    notify_initialized = notify_init("yawl");
 
     if (current_log_level == LOG_NONE)
         return MAKE_RESULT(SEV_SUCCESS, CAT_CONFIG, E_CANCELED);
@@ -125,7 +135,7 @@ void log_set_level(log_level_t level) {
 log_level_t log_get_level(void) { return current_log_level; }
 
 void _log_message(log_level_t level, const char *file, int line, const char *format, ...) {
-    if (level > current_log_level)
+    if (level > current_log_level && level != LOG_SYSTEM)
         return;
 
     va_list args;
@@ -135,12 +145,27 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
     /* Create timestamp */
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
-    /* Get just the filename without the path */
-    const char *filename = strrchr(file, '/');
-    if (filename)
-        filename++; /* Skip the slash */
-    else
-        filename = file;
+    if (level == LOG_SYSTEM && notify_initialized) {
+        NotifyNotification *notif;
+        char *message;
+
+        va_start(args, format);
+        vasprintf(&message, format, args);
+        va_end(args);
+
+        notif = notify_notification_new("yawl", message, "dialog-information");
+
+        notify_notification_set_urgency(notif, NOTIFY_URGENCY_CRITICAL);
+        notify_notification_set_timeout(notif, 30000); /* 30 seconds */
+
+        GError *error = NULL;
+        if (!notify_notification_show(notif, &error)) {
+            /* failed, whatever? */
+        }
+
+        g_object_unref(G_OBJECT(notif));
+        free(message);
+    }
 
     /* Output to terminal if appropriate */
     if (terminal_output) {
@@ -156,7 +181,14 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         fprintf(output, "\n");
     }
 
-    if (log_file) {
+    if (log_file && level != LOG_SYSTEM) {
+        /* Get just the filename without the path */
+        const char *filename = strrchr(file, '/');
+        if (filename)
+            filename++; /* Skip the slash */
+        else
+            filename = file;
+
         fprintf(log_file, "[%s] %s %s:%d: ", level_strings[level], timestamp, filename, line);
 
         va_start(args, format);

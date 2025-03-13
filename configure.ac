@@ -37,7 +37,8 @@ PKG_PROG_PKG_CONFIG
 # Set up build directories
 deps_builddir="$PWD/deps/build"
 deps_prefix="$PWD/deps/prefix"
-mkdir -p "$deps_builddir" "$deps_prefix"
+build_prefix="$PWD/deps/yawl"
+mkdir -p "$deps_builddir" "$deps_prefix" "$deps_prefix/yawl/"{lib,include} "$build_prefix"
 
 musl_is_dumb="$deps_builddir/musl_temp"
 mkdir -p "$musl_is_dumb"
@@ -65,11 +66,11 @@ AC_CHECK_FILE([$CLANG_INCDIR], [],
 ])
 
 # Always enforce static linking, and make small binaries
-export CC="$CC --target=x86_64-linux-musl"
-export CXX="$CXX --target=x86_64-linux-musl"
+export CC="$CC --target=x86_64-linux-musl -Qunused-arguments"
+export CXX="$CXX --target=x86_64-linux-musl -Qunused-arguments"
 shared_includes="-I$musl_is_dumb -I$CLANG_INCDIR -I$deps_prefix/include"
 shared_cflags="$shared_includes -Oz -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
-               -Wno-unused-command-line-argument"
+               -Wno-unused-command-line-argument -Qunused-arguments"
 export CPPFLAGS="-D__STDC_NO_ATOMICS__ $shared_includes"
 export CFLAGS="$shared_cflags -Wno-gnu-include-next"
 export CXXFLAGS="$shared_cflags"
@@ -133,92 +134,111 @@ AC_CHECK_FILE([$CERT_BUNDLE], [],
 )
 
 # Download and build libunistring (needed for idn and psl)
-if ! test -f "$deps_prefix/lib/libunistring.a"; then
+if ! test -f "$build_prefix/lib/libunistring.a"; then
     AC_MSG_NOTICE([Building libunistring])
     sh build-aux/download-deps.sh libunistring "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libunistring])
+    cp $deps_prefix/{lib,yawl/lib}/libunistring.a
 fi
 
-# Download and build libidn2 (needed for curl)
-if ! test -f "$deps_prefix/lib/libidn2.a"; then
+# Download and build libidn2 (needed for curl/openssl)
+if ! test -f "$build_prefix/lib/libidn2.a"; then
     AC_MSG_NOTICE([Building libidn2])
     sh build-aux/download-deps.sh libidn2 "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libidn2])
+    cp $deps_prefix/{lib,yawl/lib}/libidn2.a
 fi
 
-# Download and build libpsl (needed for curl)
-if ! test -f "$deps_prefix/lib/libpsl.a"; then
+# Download and build libpsl (needed for curl/openssl)
+if ! test -f "$build_prefix/lib/libpsl.a"; then
     AC_MSG_NOTICE([Building libpsl])
     sh build-aux/download-deps.sh libpsl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libpsl])
+    cp $deps_prefix/{lib,yawl/lib}/libpsl.a
 fi
 
 # Download and build libz
-if ! test -f "$deps_prefix/lib/libz.a"; then
+if ! test -f "$build_prefix/lib/libz.a"; then
     AC_MSG_NOTICE([Building libz])
     sh build-aux/download-deps.sh libz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libz])
+    cp $deps_prefix/{lib,yawl/lib}/libz.a
 fi
 
 # Download and build xz
-if ! test -f "$deps_prefix/lib/liblzma.a"; then
+if ! test -f "$build_prefix/lib/liblzma.a"; then
     AC_MSG_NOTICE([Building xz])
     sh build-aux/download-deps.sh xz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build xz])
+    cp $deps_prefix/{lib,yawl/lib}/liblzma.a
 fi
 
 # Download and build zstd
-if ! test -f "$deps_prefix/lib/libzstd.a"; then
+if ! test -f "$build_prefix/lib/libzstd.a"; then
     AC_MSG_NOTICE([Building zstd])
     sh build-aux/download-deps.sh zstd "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build zstd])
+    cp $deps_prefix/{lib,yawl/lib}/libzstd.a
 fi
 
 # Download and build openssl
-if ! test -f "$deps_prefix/lib/libssl.a" || ! test -f "$deps_prefix/lib/libcrypto.a"; then
+if ! test -f "$build_prefix/lib/libssl.a" || ! test -f "$build_prefix/lib/libcrypto.a"; then
     AC_MSG_NOTICE([Building openssl])
     sh build-aux/download-deps.sh openssl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build openssl])
+    cp $deps_prefix/{lib,yawl/lib}/libssl.a
+    cp $deps_prefix/{lib,yawl/lib}/libcrypto.a
+    cp -r $deps_prefix/{include,yawl/include}/openssl
 fi
 
 # Download and build libarchive
-if ! test -f "$deps_prefix/lib/libarchive.a"; then
+if ! test -f "$build_prefix/lib/libarchive.a"; then
     AC_MSG_NOTICE([Building libarchive])
     sh build-aux/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
+    cp $deps_prefix/{lib,yawl/lib}/libarchive.a
+    cp $deps_prefix/{include/archive*,yawl/include}
 fi
 
 # Download and build curl
-if ! test -f "$deps_prefix/lib/libcurl.a"; then
+if ! test -f "$build_prefix/lib/libcurl.a"; then
     AC_MSG_NOTICE([Building curl])
     sh build-aux/download-deps.sh curl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build curl])
+    cp $deps_prefix/{lib,yawl/lib}/libcurl.a
+    cp -r $deps_prefix/{include,yawl/include}/curl
 fi
 
-# The flags are taken from the generated .pc (pkg-config) files, slightly modified.
-# Hardcoding them here to avoid needing to ship .pc files.
-CURL_CFLAGS="-I$deps_prefix/include -DCURL_STATICLIB -DWITH_GZFILEOP"
-CURL_LIBS="-L$deps_prefix/lib -lcurl -lidn2 -lunistring -lpsl -lssl -lcrypto -lzstd -lz -l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a -Wl,--whole-archive -lpthread -Wl,--no-whole-archive -lunistring -lpthread -lzstd -l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a -Wl,--whole-archive -lpthread -Wl,--no-whole-archive -lidn2 -lunistring -lpthread -lz -lzstd -pthread -lssl -lcrypto -ldl -pthread -lpsl"
-LIBARCHIVE_CFLAGS="-I$deps_prefix/include -DLIBARCHIVE_STATIC"
-LIBARCHIVE_LIBS="-L$deps_prefix/lib -larchive -llzma -lzstd -lz -lcrypto"
-LIBIDN2_CFLAGS="-I$deps_prefix/include"
-LIBIDN2_LIBS="-L$deps_prefix/lib -lidn2 -lunistring"
-LIBLZMA_CFLAGS="-I$deps_prefix/include -DLZMA_API_STATIC"
-LIBLZMA_LIBS="-L$deps_prefix/lib -llzma"
-LIBPSL_CFLAGS="-I$deps_prefix/include"
-LIBPSL_LIBS="-L$deps_prefix/lib -lpsl"
-LIBUNISTRING_CFLAGS="-I$deps_prefix/include"
-LIBUNISTRING_LIBS="-l:libunistring.a"
-LIBZSTD_CFLAGS="-I$deps_prefix/include"
-LIBZSTD_LIBS="-L$deps_prefix/lib -lzstd"
-LIBZ_CFLAGS="-I$deps_prefix/include -DWITH_GZFILEOP"
-LIBZ_LIBS="-L$deps_prefix/lib -lz"
-OPENSSL_CFLAGS="-I$deps_prefix/include"
-OPENSSL_LIBS="-L$deps_prefix/lib -lssl -lcrypto"
+# Download and build libnotify
+if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/libgdk_pixbuf-2.0.a" || ! test -f "$build_prefix/lib/libglib-2.0.a"; then
+    # Download and build gdk-pixbuf (only required for libnotify)
+    if ! test -f "$deps_prefix/lib/libgdk_pixbuf-2.0.a"; then
+        AC_MSG_NOTICE([Building gdk-pixbuf])
+        sh build-aux/download-deps.sh gdk-pixbuf "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build gdk-pixbuf])
+    fi
+    AC_MSG_NOTICE([Building libnotify])
+    sh build-aux/download-deps.sh libnotify "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libnotify])
+    cp $deps_prefix/{lib,yawl/lib}/libnotify.a
+    cp $deps_prefix/{lib,yawl/lib}/libglib-2.0.a
+    cp $deps_prefix/{lib,yawl/lib}/libgobject-2.0.a
+    cp $deps_prefix/{lib,yawl/lib}/libgmodule-2.0.a
+    cp $deps_prefix/{lib,yawl/lib}/libgio-2.0.a
+    cp $deps_prefix/{lib,yawl/lib}/libgirepository-2.0.a
+    cp $deps_prefix/{lib,yawl/lib}/libgdk_pixbuf-2.0.a
+    cp $deps_prefix/{lib,yawl/lib}/libffi.a
+    cp -r $deps_prefix/{include,yawl/include}/libnotify
+    cp -r $deps_prefix/{include,yawl/include}/glib-2.0
+    cp -r $deps_prefix/{include,yawl/include}/gdk-pixbuf-2.0
+fi
 
-AC_SUBST([LIBUNISTRING_CFLAGS])
-AC_SUBST([LIBUNISTRING_LIBS])
-AC_SUBST([LIBPSL_CFLAGS])
-AC_SUBST([LIBPSL_LIBS])
-AC_SUBST([LIBIDN2_CFLAGS])
-AC_SUBST([LIBIDN2_LIBS])
-AC_SUBST([LIBZ_CFLAGS])
-AC_SUBST([LIBZ_LIBS])
-AC_SUBST([LIBLZMA_CFLAGS])
-AC_SUBST([LIBLZMA_LIBS])
-AC_SUBST([LIBZSTD_CFLAGS])
-AC_SUBST([LIBZSTD_LIBS])
+# Now reset everything to a prefix with only the necessary deps to build yawl
+if test -f "$deps_prefix/yawl/lib/libnotify.a"; then
+    rm -rf "$build_prefix"
+    cp -r $deps_prefix/yawl "$build_prefix"
+fi
+
+CURL_CFLAGS="-I$build_prefix/include -DCURL_STATICLIB -DWITH_GZFILEOP"
+CURL_LIBS="-L$build_prefix/lib -l:libcurl.a -l:libidn2.a -l:libunistring.a -l:libpsl.a -l:libssl.a -l:libcrypto.a -l:libzstd.a -l:libz.a -ldl"
+LIBARCHIVE_CFLAGS="-I$build_prefix/include -DLIBARCHIVE_STATIC"
+LIBARCHIVE_LIBS="-L$build_prefix/lib -l:libarchive.a -l:liblzma.a -l:libzstd.a -l:libz.a -l:libcrypto.a"
+LIBNOTIFY_CFLAGS="-I$build_prefix/include -I$build_prefix/include/glib-2.0 -I$build_prefix/include/gdk-pixbuf-2.0"
+LIBNOTIFY_LIBS="-L$build_prefix/lib -l:libnotify.a -l:libgdk_pixbuf-2.0.a -l:libgmodule-2.0.a -l:libgio-2.0.a -l:libgirepository-2.0.a -l:libgobject-2.0.a -l:libglib-2.0.a -l:libffi.a -lm"
+OPENSSL_CFLAGS="-I$build_prefix/include"
+OPENSSL_LIBS="-L$build_prefix/lib -l:libssl.a -l:libcrypto.a"
+
+AC_SUBST([LIBNOTIFY_CFLAGS])
+AC_SUBST([LIBNOTIFY_LIBS])
 AC_SUBST([LIBARCHIVE_CFLAGS])
 AC_SUBST([LIBARCHIVE_LIBS])
 AC_SUBST([OPENSSL_CFLAGS])
@@ -226,26 +246,27 @@ AC_SUBST([OPENSSL_LIBS])
 AC_SUBST([CURL_CFLAGS])
 AC_SUBST([CURL_LIBS])
 
-# Here for reference:
+build_includes="-I$musl_is_dumb -I$CLANG_INCDIR -I$build_prefix/include"
+build_cflags="$build_includes -Oz -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
+               -Wno-unused-command-line-argument -Qunused-arguments"
+export CPPFLAGS="$build_includes"
+export CFLAGS="$build_cflags -Wno-gnu-include-next"
+export CXXFLAGS="$build_cflags"
+export LDFLAGS="-L$build_prefix/lib -static -Wl,--gc-sections,-s -fuse-ld=musl-clang"
 
-# LIBUNISTRING_CFLAGS="-I$deps_prefix/include"
-# LIBUNISTRING_LIBS="-l:libunistring.a"
-# LIBPSL_CFLAGS="$($PKG_CONFIG --cflags libpsl)"
-# LIBPSL_LIBS="$($PKG_CONFIG --libs libpsl)"
-# LIBIDN2_CFLAGS="$($PKG_CONFIG --cflags libidn2)"
-# LIBIDN2_LIBS="$($PKG_CONFIG --libs libidn2)"
-# LIBZ_CFLAGS="$($PKG_CONFIG --cflags zlib)"
-# LIBZ_LIBS="$($PKG_CONFIG --libs zlib)"
-# LIBLZMA_CFLAGS="$($PKG_CONFIG --cflags liblzma)"
-# LIBLZMA_LIBS="$($PKG_CONFIG --libs liblzma)"
-# LIBZSTD_CFLAGS="$($PKG_CONFIG --cflags libzstd)"
-# LIBZSTD_LIBS="$($PKG_CONFIG --libs libzstd)"
-# LIBARCHIVE_CFLAGS="$($PKG_CONFIG --cflags libarchive)"
-# LIBARCHIVE_LIBS="$($PKG_CONFIG --libs libarchive)"
-# OPENSSL_CFLAGS="$($PKG_CONFIG --cflags openssl) $($PKG_CONFIG --cflags libcrypto)"
-# OPENSSL_LIBS="$($PKG_CONFIG --libs openssl) $($PKG_CONFIG --libs libcrypto)"
-# CURL_CFLAGS="$($PKG_CONFIG --cflags libcurl)"
-# CURL_LIBS="$($PKG_CONFIG --libs libcurl)"
+AC_SUBST([CPPFLAGS])
+AC_SUBST([CFLAGS])
+AC_SUBST([CXXFLAGS])
+AC_SUBST([LDFLAGS])
+
+export PKG_CONFIG=""
+AC_SUBST([PKG_CONFIG])
+export PKG_CONFIG_PATH=""
+AC_SUBST([PKG_CONFIG_PATH])
+export PKG_CONFIG_LIBDIR=""
+AC_SUBST([PKG_CONFIG_LIBDIR])
+
+AC_CHECK_HEADERS([curl/ca_cert_embed.h], [], [AC_MSG_ERROR([Missing curl embedded certificate header, need to rebuild curl])])
 
 # Generate Makefile
 AC_CONFIG_FILES([Makefile])

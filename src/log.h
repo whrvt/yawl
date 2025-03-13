@@ -28,10 +28,11 @@
 
 typedef enum {
     LOG_NONE = 0,
-    LOG_ERROR = 1,   /* Critical errors that prevent proper operation */
-    LOG_WARNING = 2, /* Non-critical issues that might affect behavior */
-    LOG_INFO = 3,    /* Normal operational information */
-    LOG_DEBUG = 4    /* Detailed information for troubleshooting */
+    LOG_SYSTEM = 1,  /* Messages always attempted to be logged to stdout if in a terminal */
+    LOG_ERROR = 2,   /* Critical errors that prevent proper operation */
+    LOG_WARNING = 3, /* Non-critical issues that might affect behavior */
+    LOG_INFO = 4,    /* Normal operational information */
+    LOG_DEBUG = 5    /* Detailed information for troubleshooting */
 } log_level_t;
 
 /* Initialize the logging subsystem */
@@ -53,6 +54,7 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
 void _log_result(log_level_t level, const char *file, int line, RESULT result, const char *context);
 
 /* Convenience macros that include file and line information */
+#define LOG_SYSTEM(...) _log_message(LOG_SYSTEM, __FILE__, __LINE__, __VA_ARGS__)
 #define LOG_ERROR(...) _log_message(LOG_ERROR, __FILE__, __LINE__, __VA_ARGS__)
 #define LOG_WARNING(...) _log_message(LOG_WARNING, __FILE__, __LINE__, __VA_ARGS__)
 #define LOG_INFO(...) _log_message(LOG_INFO, __FILE__, __LINE__, __VA_ARGS__)

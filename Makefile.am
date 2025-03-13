@@ -4,12 +4,10 @@ bin_PROGRAMS = yawl
 
 yawl_SOURCES = src/yawl.c src/util.c src/util.h src/apparmor.c src/apparmor.h src/bwrap_data.h src/log.c src/log.h \
 				src/result.c src/result.h
-yawl_CFLAGS  = $(LIBUNISTRING_CFLAGS) $(LIBIDN2_CFLAGS) $(LIBPSL_CFLAGS) $(LIBZ_CFLAGS) \
-				$(LIBLZMA_CFLAGS) $(LIBZSTD_CFLAGS) $(LIBARCHIVE_CFLAGS) $(OPENSSL_CFLAGS) $(CURL_CFLAGS) \
+yawl_CFLAGS  = $(LIBARCHIVE_CFLAGS) $(OPENSSL_CFLAGS) $(CURL_CFLAGS) $(LIBNOTIFY_CFLAGS) \
 				-Wall -Werror -Wextra -Wpedantic -std=gnu17 -fwrapv -fno-strict-aliasing
 yawl_LDFLAGS = -static -static-libgcc
-yawl_LDADD = $(LIBUNISTRING_LIBS) $(LIBIDN2_LIBS) $(LIBPSL_LIBS) $(LIBZ_LIBS) $(LIBLZMA_LIBS) \
-			 $(LIBZSTD_LIBS) $(LIBARCHIVE_LIBS) $(OPENSSL_LIBS) $(CURL_LIBS) $(PTHREAD_EXTLIBS)
+yawl_LDADD = $(LIBARCHIVE_LIBS) $(OPENSSL_LIBS) $(CURL_LIBS) $(LIBNOTIFY_LIBS) $(PTHREAD_EXTLIBS)
 EXTRA_DIST = README.md
 
 uninstall-hook:

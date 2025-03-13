@@ -126,10 +126,10 @@ static RESULT install_apparmor_profile(void) {
     }
 
     LOG_INFO("Installing AppArmor profile to enable container functionality...");
-    LOG_INFO("Please enter your password when prompted. This just installs a file to");
-    LOG_INFO("    /etc/apparmor.d/, which gives enough permissions to the pressure-vessel container");
-    LOG_INFO("    to function properly. If you don't trust me, follow this guide to install it manually:");
-    LOG_INFO("    https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
+    LOG_SYSTEM("Please enter your password when prompted.\nThis just installs a file to "
+            "/etc/apparmor.d/, which gives enough permissions to the pressure-vessel container "
+            "to function properly.\nIf you don't trust me, follow this guide to install it manually:\n"
+            "https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
 
     /* Create the command to install the profile */
     append_sep(install_cmd, " ", "pkexec", "sh", "-c", "'mkdir -p " APPARMOR_DIR " && cp", temp_profile_path,
@@ -169,11 +169,11 @@ RESULT handle_apparmor(const char *entry_point) {
     /* Try to install the AppArmor profile */
     result = install_apparmor_profile();
     if (FAILED(result)) {
-        LOG_RESULT(LOG_DEBUG, result, "Failed to install AppArmor Profile");
+        LOG_RESULT(LOG_DEBUG, result, "Failed to install AppArmor profile");
 
-        LOG_ERROR("Failed to install AppArmor profile. Container may not work correctly.");
-        LOG_ERROR("Please follow this guide to manually install the AppArmor profile:");
-        LOG_ERROR("   https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
+        LOG_SYSTEM("Failed to install AppArmor profile. Container may not work correctly.\n"
+                "Please follow this guide to manually install the AppArmor profile:\n"
+                "https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
         return result;
     }
 
@@ -183,8 +183,8 @@ RESULT handle_apparmor(const char *entry_point) {
     if (FAILED(result)) {
         LOG_RESULT(LOG_DEBUG, result, "Container still not working after AppArmor profile installation");
 
-        LOG_ERROR("Container still not working after AppArmor profile installation.");
-        LOG_ERROR("You may need to restart the system for AppArmor changes to take effect.");
+        LOG_SYSTEM("Container still not working after AppArmor profile installation.\n"
+                "You may need to restart the system for AppArmor changes to take effect.");
         return result;
     }
 
