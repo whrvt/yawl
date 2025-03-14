@@ -1,4 +1,4 @@
-AC_INIT([yawl], [0.6.0], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
+AC_INIT([yawl], [0.6.1], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_SRCDIR([src/yawl.c])
@@ -14,6 +14,14 @@ AC_PROG_CXX([musl-clang])
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
+
+AC_DEFUN([AC_PROG_PERL], [
+    AC_CHECK_PROG([PERL], [perl], [perl])
+    if test -z "$PERL"; then
+        AC_MSG_ERROR([perl not found])
+    fi
+])
+AC_PROG_PERL
 
 AC_DEFUN([AC_PROG_STRIP], [
     AC_CHECK_PROG([STRIP], [strip], [strip])
@@ -69,12 +77,12 @@ AC_CHECK_FILE([$CLANG_INCDIR], [],
 export CC="$CC --target=x86_64-linux-musl -Qunused-arguments"
 export CXX="$CXX --target=x86_64-linux-musl -Qunused-arguments"
 shared_includes="-I$musl_is_dumb -I$CLANG_INCDIR -I$deps_prefix/include"
-shared_cflags="$shared_includes -Oz -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
+shared_cflags="$shared_includes -Oz -flto=auto -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
                -Wno-unused-command-line-argument -Qunused-arguments"
 export CPPFLAGS="-D__STDC_NO_ATOMICS__ $shared_includes"
 export CFLAGS="$shared_cflags -Wno-gnu-include-next"
 export CXXFLAGS="$shared_cflags"
-export LDFLAGS="-L$deps_prefix/lib -static -Wl,--gc-sections,-s -fuse-ld=musl-clang"
+export LDFLAGS="-L$deps_prefix/lib -static -flto=auto -Wl,-O2,--gc-sections,-s -fuse-ld=musl-clang"
 export STRIP="$STRIP"
 export AR="$AR"
 
@@ -237,39 +245,41 @@ if test -f "$deps_prefix/yawl/lib/libnotify.a"; then
     cp -r $deps_prefix/yawl "$build_prefix"
 fi
 
-CURL_CFLAGS="-I$build_prefix/include -DCURL_STATICLIB -DWITH_GZFILEOP"
-CURL_LIBS="-L$build_prefix/lib -l:libcurl.a -l:libidn2.a -l:libunistring.a -l:libpsl.a -l:libssl.a -l:libcrypto.a -l:libzstd.a -l:libz.a -ldl"
-LIBARCHIVE_CFLAGS="-I$build_prefix/include -DLIBARCHIVE_STATIC"
-LIBARCHIVE_LIBS="-L$build_prefix/lib -l:libarchive.a -l:liblzma.a -l:libzstd.a -l:libz.a -l:libcrypto.a"
-LIBNOTIFY_CFLAGS="-I$build_prefix/include -I$build_prefix/include/glib-2.0 -I$build_prefix/include/gdk-pixbuf-2.0"
-LIBNOTIFY_LIBS="-L$build_prefix/lib -l:libnotify.a -l:libgdk_pixbuf-2.0.a -l:libgmodule-2.0.a -l:libgio-2.0.a -l:libgirepository-2.0.a -l:libgobject-2.0.a -l:libglib-2.0.a -l:libffi.a -lm"
-JSON_GLIB_CFLAGS="-I$build_prefix/include -I$build_prefix/include/glib-2.0 -I$build_prefix/include/gdk-pixbuf-2.0 -I$build_prefix/include/json-glib-1.0"
-JSON_GLIB_LIBS="-L$build_prefix/lib -l:libjson-glib-1.0.a -l:libgmodule-2.0.a -l:libgio-2.0.a -l:libgirepository-2.0.a -l:libgobject-2.0.a -l:libglib-2.0.a -l:libffi.a -lm"
-OPENSSL_CFLAGS="-I$build_prefix/include"
-OPENSSL_LIBS="-L$build_prefix/lib -l:libssl.a -l:libcrypto.a"
+CURL_CPPFLAGS="-DCURL_STATICLIB -DWITH_GZFILEOP"
+LIBARCHIVE_CPPFLAGS="-DLIBARCHIVE_STATIC"
 
-AC_SUBST([LIBNOTIFY_CFLAGS])
-AC_SUBST([LIBNOTIFY_LIBS])
-AC_SUBST([JSON_GLIB_CFLAGS])
-AC_SUBST([JSON_GLIB_LIBS])
-AC_SUBST([LIBARCHIVE_CFLAGS])
-AC_SUBST([LIBARCHIVE_LIBS])
-AC_SUBST([OPENSSL_CFLAGS])
-AC_SUBST([OPENSSL_LIBS])
-AC_SUBST([CURL_CFLAGS])
-AC_SUBST([CURL_LIBS])
+NON_GLIB_CPPFLAGS="$LIBARCHIVE_CPPFLAGS $CURL_CPPFLAGS -I$build_prefix/include"
 
-build_includes="-I$musl_is_dumb -I$CLANG_INCDIR -I$build_prefix/include"
-build_cflags="$build_includes -Oz -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
-               -Wno-unused-command-line-argument -Qunused-arguments"
-export CPPFLAGS="$build_includes -D_GNU_SOURCE"
-export CFLAGS="$build_cflags -Wno-gnu-include-next"
-export CXXFLAGS="$build_cflags"
-export LDFLAGS="-L$build_prefix/lib -static -Wl,--gc-sections,-s -fuse-ld=musl-clang"
+COMMON_DEP_LIBS="-l:libidn2.a -l:libunistring.a -l:libpsl.a -l:libzstd.a -l:libz.a -l:liblzma.a"
+CURL_LIBS="-l:libcurl.a -ldl"
+LIBARCHIVE_LIBS="-l:libarchive.a"
+OPENSSL_LIBS="-l:libssl.a -l:libcrypto.a"
+
+NON_GLIB_LIBS="-L$build_prefix/lib $CURL_LIBS $LIBARCHIVE_LIBS $OPENSSL_LIBS $COMMON_DEP_LIBS"
+
+GLIB_CPPFLAGS="-I$build_prefix/include/glib-2.0"
+GDK_PIXBUF_CPPFLAGS="-I$build_prefix/include/gdk-pixbuf-2.0"
+JSON_GLIB_CPPFLAGS="-I$build_prefix/include/json-glib-1.0"
+
+ALL_GLIB_CPPFLAGS="$GDK_PIXBUF_CPPFLAGS $JSON_GLIB_CPPFLAGS $GLIB_CPPFLAGS"
+
+GLIB_LIBS="-l:libgmodule-2.0.a -l:libgio-2.0.a -l:libgirepository-2.0.a -l:libgobject-2.0.a -l:libglib-2.0.a -l:libffi.a -lm"
+GDK_PIXBUF_LIBS="-l:libgdk_pixbuf-2.0.a"
+LIBNOTIFY_LIBS="-l:libnotify.a"
+JSON_GLIB_LIBS="-l:libjson-glib-1.0.a"
+
+ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
+
+export CPPFLAGS="-D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
+export CFLAGS="-O3 -std=gnu17 -fwrapv -fno-strict-aliasing -flto=auto -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
+    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next"
+export LDFLAGS="-static -static-libgcc -flto=auto -Wl,-O2,--gc-sections,-s"
+
+AC_SUBST([NON_GLIB_LIBS])
+AC_SUBST([ALL_GLIB_LIBS])
 
 AC_SUBST([CPPFLAGS])
 AC_SUBST([CFLAGS])
-AC_SUBST([CXXFLAGS])
 AC_SUBST([LDFLAGS])
 
 export PKG_CONFIG=""

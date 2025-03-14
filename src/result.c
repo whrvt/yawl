@@ -66,6 +66,24 @@ const char *result_to_string(RESULT result) {
     int category = RESULT_CATEGORY(result);
     int code = RESULT_CODE(result);
 
+    /* Handle common error codes first */
+    switch (code) {
+    case E_UNKNOWN:
+        return "Unknown error";
+    case E_INVALID_ARG:
+        return "Invalid argument";
+    case E_OUT_OF_MEMORY:
+        return "Out of memory";
+    case E_TIMEOUT:
+        return "Operation timed out";
+    case E_BUSY:
+        return "Resource busy";
+    case E_CANCELED:
+        return "Operation canceled";
+    case E_NOT_SUPPORTED:
+        return "Operation not supported";
+    }
+
     /* Handle category-specific errors */
     switch (category) {
     case CAT_FILESYSTEM:
@@ -115,26 +133,6 @@ const char *result_to_string(RESULT result) {
             return strerror(code);
         }
         return "System error";
-    }
-
-    /* Handle common error codes first */
-    switch (code) {
-    case E_UNKNOWN:
-        return "Unknown error";
-    case E_INVALID_ARG:
-        return "Invalid argument";
-    case E_OUT_OF_MEMORY:
-        return "Out of memory";
-    case E_TIMEOUT:
-        return "Operation timed out";
-    case E_BUSY:
-        return "Resource busy";
-    case E_CANCELED:
-        return "Operation canceled";
-    case E_NOT_SUPPORTED:
-        return "Operation not supported";
-    case E_PARSE_ERROR:
-        return "Parsing error";
     }
 
     return "Unhandled result error";
