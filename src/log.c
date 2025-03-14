@@ -214,7 +214,7 @@ void _log_result(log_level_t level, const char *file, int line, RESULT result, c
     else
         _log_message(level, file, line, "Result: %s (0x%08X)", result_str, (unsigned)result);
 
-    if (level == LOG_DEBUG && FAILED(result)) {
+    if (current_log_level == LOG_DEBUG) {
         int severity = RESULT_SEVERITY(result);
         int category = RESULT_CATEGORY(result);
         int code = RESULT_CODE(result);

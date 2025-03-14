@@ -25,12 +25,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "json-glib/json-glib.h"
-
 #include "config.h"
 #include "log.h"
 #include "update.h"
 #include "util.h"
+
+#define G_LOG_DOMAIN "json-glib"
+#include "json-glib/json-glib.h"
 
 #define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/" PROG_NAME "/releases/latest"
 #define GITHUB_DOWNLOAD_URL_FORMAT PACKAGE_URL "/releases/download/%s/" PROG_NAME
@@ -69,7 +70,7 @@ static RESULT download_github_release_info(const char *output_path) {
 /* Parse release info and check if an update is available */
 static RESULT parse_release_info(const char *json_path, char **tag_name, char **download_url) {
     if (!json_path || !tag_name || !download_url)
-        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
+        return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_INVALID_ARG);
 
     *tag_name = NULL;
     *download_url = NULL;
@@ -83,13 +84,13 @@ static RESULT parse_release_info(const char *json_path, char **tag_name, char **
         LOG_ERROR("Failed to parse JSON: %s", error->message);
         g_error_free(error);
         g_object_unref(parser);
-        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_PARSE_ERROR);
+        return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_PARSE_ERROR);
     }
 
     JsonNode *root = json_parser_get_root(parser);
     if (!root || JSON_NODE_TYPE(root) != JSON_NODE_OBJECT) {
         g_object_unref(parser);
-        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_PARSE_ERROR);
+        return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_PARSE_ERROR);
     }
 
     JsonObject *root_obj = json_node_get_object(root);
@@ -100,7 +101,7 @@ static RESULT parse_release_info(const char *json_path, char **tag_name, char **
         *tag_name = strdup(tag);
     } else {
         g_object_unref(parser);
-        return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_NOT_FOUND);
+        return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_NOT_FOUND);
     }
 
     /* Format the download URL */
@@ -112,7 +113,7 @@ static RESULT parse_release_info(const char *json_path, char **tag_name, char **
             free(*tag_name);
             *tag_name = NULL;
             g_object_unref(parser);
-            return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
+            return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_OUT_OF_MEMORY);
         }
     }
 
@@ -354,7 +355,6 @@ static RESULT check_for_updates(void) {
     /* Parse release information */
     result = parse_release_info(release_file, &tag_name, &download_url);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to parse release information");
         unlink(release_file);
         free(release_file);
         return result;

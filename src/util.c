@@ -497,7 +497,7 @@ RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
         /* Check if this verb should be removed */
         int remove_verb = 0;
         for (int i = 0; i < num_verbs; i++) {
-            if (STRING_EQUALS(token, verbs_to_remove[i])) {
+            if (LCSTRING_EQUALS(token, verbs_to_remove[i])) {
                 remove_verb = 1;
                 break;
             }

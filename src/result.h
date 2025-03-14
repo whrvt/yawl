@@ -51,6 +51,7 @@ typedef int32_t RESULT;
 #define CAT_CONFIG 5
 #define CAT_CONTAINER 6
 #define CAT_APPARMOR 7
+#define CAT_JSON 8
 
 /* Severity levels */
 #define SEV_SUCCESS 0
