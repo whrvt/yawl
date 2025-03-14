@@ -165,8 +165,8 @@ static RESULT parse_env_options(struct options *opts) {
             }
             LOG_INFO("Unknown YAWL_VERBS token: %s", token);
             result = RESULT_OK;
-        } else if (opts->version || opts->help) {
-            LOG_DEBUG("Returning early, got %s token", opts->version ? "version" : "help");
+        } else if (opts->help) {
+            LOG_DEBUG("Returning early, got help token");
             break;
         }
         token = strtok(NULL, ";");
@@ -738,17 +738,16 @@ int main(int argc, char *argv[]) {
     result = parse_env_options(&opts);
     LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to parse options");
 
-    if (opts.version) {
-        printf(VERSION "\n");
-        return 0;
-    }
-
     if (opts.help) {
         print_usage();
         return 0;
     }
 
     if (opts.check || opts.update) {
+        /* Remove update verbs from env */
+        const char *verbs_to_remove[] = {"update", "check"};
+        RESULT remove_result = remove_verbs_from_env(verbs_to_remove, 2);
+
         result = handle_updates(opts.check, opts.update);
         if (FAILED(result)) {
             LOG_RESULT(LOG_WARNING, result, "Update unsuccessful");
@@ -757,17 +756,22 @@ int main(int argc, char *argv[]) {
             LOG_INFO("Update installed.");
             result = RESULT_OK;
 
-            /* Remove update verbs from env, then restart if there are verbs remaining. */
-            const char *verbs_to_remove[] = {"update", "check"};
-            RESULT remove_result = remove_verbs_from_env(verbs_to_remove, 2);
-            if (RESULT_CODE(remove_result) != E_NOT_FOUND)
-            {
+            /* Restart if there are verbs remaining to be processed. */
+            if (RESULT_CODE(remove_result) != E_NOT_FOUND) {
                 LOG_INFO("Additional verbs supplied, restarting...");
                 execv(argv[0], argv);
-
                 LOG_ERROR("Failed to restart: %s", strerror(errno));
             }
         }
+        if (RESULT_CODE(remove_result) == E_NOT_FOUND) {
+            LOG_DEBUG("Exiting now, no more verbs to process.");
+            return 0;
+        }
+    }
+
+    if (opts.version) {
+        printf(VERSION "\n");
+        return 0;
     }
 
     /* Handle make_wrapper option */

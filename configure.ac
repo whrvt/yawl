@@ -77,12 +77,12 @@ AC_CHECK_FILE([$CLANG_INCDIR], [],
 export CC="$CC --target=x86_64-linux-musl -Qunused-arguments"
 export CXX="$CXX --target=x86_64-linux-musl -Qunused-arguments"
 shared_includes="-I$musl_is_dumb -I$CLANG_INCDIR -I$deps_prefix/include"
-shared_cflags="$shared_includes -Oz -flto=auto -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
+shared_cflags="$shared_includes -Oz -flto=auto -ffat-lto-objects -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
                -Wno-unused-command-line-argument -Qunused-arguments"
 export CPPFLAGS="-D__STDC_NO_ATOMICS__ $shared_includes"
 export CFLAGS="$shared_cflags -Wno-gnu-include-next"
 export CXXFLAGS="$shared_cflags"
-export LDFLAGS="-L$deps_prefix/lib -static -flto=auto -Wl,-O2,--gc-sections,-s -fuse-ld=musl-clang"
+export LDFLAGS="-L$deps_prefix/lib -static -flto=auto -ffat-lto-objects -Wl,-O2,--gc-sections,-s -fuse-ld=musl-clang"
 export STRIP="$STRIP"
 export AR="$AR"
 
@@ -271,9 +271,9 @@ JSON_GLIB_LIBS="-l:libjson-glib-1.0.a"
 ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
 
 export CPPFLAGS="-D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-export CFLAGS="-O3 -std=gnu17 -fwrapv -fno-strict-aliasing -flto=auto -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
+export CFLAGS="-O3 -std=gnu17 -fwrapv -fno-strict-aliasing -pthread -flto=auto -ffat-lto-objects -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
     -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next"
-export LDFLAGS="-static -static-libgcc -flto=auto -Wl,-O2,--gc-sections,-s"
+export LDFLAGS="-pthread -static -static-libgcc -flto=auto -ffat-lto-objects -Wl,-O2,--gc-sections,-s"
 
 AC_SUBST([NON_GLIB_LIBS])
 AC_SUBST([ALL_GLIB_LIBS])
