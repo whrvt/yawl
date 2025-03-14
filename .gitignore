@@ -26,6 +26,7 @@ Makefile.in
 /yawl
 
 /deps/
+/deps-clean/
 
 pkgconfig/
 ossl-modules/

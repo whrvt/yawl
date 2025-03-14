@@ -398,8 +398,8 @@ EOF
         rm -f "$PREFIX/lib/pkgconfig/{gthread*.pc,gobject*.pc,glib*.pc,gmodule-no-export*.pc,gmodule-export*.pc,gmodule*.pc,girepository*.pc,gio-unix*.pc,gio*.pc,gdk-pixbuf*.pc}"
         find "${PREFIX:?}"/ '(' -iregex ".*deps/prefix.*glib.*" -o -iregex ".*deps/prefix.*ffi.*" -o -iregex ".*deps/prefix.*pcre.*" ')' -exec rm -rf '{''}' '+'
         FLAGS_MESON=("env"
-            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS" "CFLAGS=$CFLAGS -fno-exceptions"
-            "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
+            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
         )
         "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
@@ -466,8 +466,8 @@ EOF
 pkg-config --static "\$@"
 EOF
         FLAGS_MESON=("env"
-            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS" "CFLAGS=$CFLAGS -fno-exceptions"
-            "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
+            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
         )
         "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
@@ -497,8 +497,8 @@ EOF
 pkg-config --static "\$@"
 EOF
         FLAGS_MESON=("env"
-            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS" "CFLAGS=$CFLAGS -fno-exceptions"
-            "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
+            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
         )
         "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \

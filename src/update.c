@@ -121,7 +121,7 @@ static RESULT parse_release_info(const char *json_path, char **tag_name, char **
     return RESULT_OK;
 }
 
-/* Make the downloaded file executable */
+/* Mark a file as executable */
 static RESULT make_executable(const char *file_path) {
     struct stat st;
 
@@ -143,6 +143,7 @@ static RESULT make_executable(const char *file_path) {
     return RESULT_OK;
 }
 
+/* TODO: refactor the file replacement/copying/backup functions below, could be made a lot clearer and simpler */
 static RESULT copy_file_raw(const char *source, const char *destination, int use_temp) {
     FILE *src = NULL, *dst = NULL;
     char buffer[BUFFER_SIZE];

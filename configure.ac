@@ -6,11 +6,11 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_PREFIX_DEFAULT([dist]) # default `make install`s to ./dist/bin/ (modify with --prefix=)
 
-AC_PROG_CC([musl-clang])
+AC_PROG_CC([musl-gcc])
 if test -z "$CC"; then
-    AC_MSG_ERROR([musl-clang not found])
+    AC_MSG_ERROR([musl-gcc not found])
 fi
-AC_PROG_CXX([musl-clang])
+AC_PROG_CXX([musl-gcc])
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
@@ -63,26 +63,17 @@ AS_IF([test -L "$musl_is_dumb/linux"],
 )
 $LN_S "$MUSL_INCDIR" "$musl_is_dumb/linux"
 
-CLANGVER="$($CC --version | head -n 1 | cut -f3 -d' ' | cut -f1 -d'.')"
-
-AS_IF([test -n "$CLANG_INCDIR"], [],
-    [CLANG_INCDIR="/usr/lib/clang/$CLANGVER/include"]
-)
-AC_SUBST([CLANG_INCDIR])
-AC_CHECK_FILE([$CLANG_INCDIR], [],
-    [AC_MSG_ERROR([Could not find the clang header files (set CLANG_INCDIR to specify a clang/<version>/include folder manually)])
-])
-
 # Always enforce static linking, and make small binaries
-export CC="$CC --target=x86_64-linux-musl -Qunused-arguments"
-export CXX="$CXX --target=x86_64-linux-musl -Qunused-arguments"
-shared_includes="-I$musl_is_dumb -I$CLANG_INCDIR -I$deps_prefix/include"
-shared_cflags="$shared_includes -Oz -flto=auto -ffat-lto-objects -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
-               -Wno-unused-command-line-argument -Qunused-arguments"
-export CPPFLAGS="-D__STDC_NO_ATOMICS__ $shared_includes"
-export CFLAGS="$shared_cflags -Wno-gnu-include-next"
+export CC="$CC"
+export CXX="$CXX"
+shared_includes="-I$musl_is_dumb -I$deps_prefix/include"
+shared_cflags="$shared_includes -Oz -march=x86-64 -mtune=generic -static -static-libgcc -flto=auto -ffat-lto-objects -ffunction-sections -fdata-sections \
+    -fcf-protection=full -fstack-clash-protection -fstack-protector-all"
+export CPPFLAGS="$shared_includes"
+export CFLAGS="$shared_cflags"
 export CXXFLAGS="$shared_cflags"
-export LDFLAGS="-L$deps_prefix/lib -static -flto=auto -ffat-lto-objects -Wl,-O2,--gc-sections,-s -fuse-ld=musl-clang"
+export LDFLAGS="-L$deps_prefix/lib -static -static-libgcc -flto=auto -ffat-lto-objects -Wl,-O2,--gc-sections,-s -Wl,-z,nodlopen \
+    -Wl,-z,noexecstack -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--no-copy-dt-needed-entries"
 export STRIP="$STRIP"
 export AR="$AR"
 
@@ -245,6 +236,8 @@ if test -f "$deps_prefix/yawl/lib/libnotify.a"; then
     cp -r $deps_prefix/yawl "$build_prefix"
 fi
 
+find "$build_prefix"/ -name '*.a' -execdir "$STRIP" --strip-unneeded '{''}' '+'
+
 CURL_CPPFLAGS="-DCURL_STATICLIB -DWITH_GZFILEOP"
 LIBARCHIVE_CPPFLAGS="-DLIBARCHIVE_STATIC"
 
@@ -271,9 +264,10 @@ JSON_GLIB_LIBS="-l:libjson-glib-1.0.a"
 ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
 
 export CPPFLAGS="-D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-export CFLAGS="-O3 -std=gnu17 -fwrapv -fno-strict-aliasing -pthread -flto=auto -ffat-lto-objects -ffunction-sections -fdata-sections -static -march=x86-64 -mtune=generic \
-    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next"
-export LDFLAGS="-pthread -static -static-libgcc -flto=auto -ffat-lto-objects -Wl,-O2,--gc-sections,-s"
+export CFLAGS="-O3 -std=gnu17 -march=x86-64 -mtune=generic -static -static-libgcc -fwrapv -fno-strict-aliasing -flto=auto -ffat-lto-objects -pthread \
+    -ffunction-sections -fdata-sections -fcf-protection=full -fstack-clash-protection -fstack-protector-all \
+    -Wall -Werror -Wextra -Wpedantic -Wtrampolines -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-error=maybe-uninitialized -Wno-error=stringop-overflow"
+export LDFLAGS="-Wl,-O2,--gc-sections,-s -Wl,-z,nodlopen -Wl,-z,noexecstack -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--no-copy-dt-needed-entries"
 
 AC_SUBST([NON_GLIB_LIBS])
 AC_SUBST([ALL_GLIB_LIBS])

@@ -23,11 +23,20 @@
 #include <string.h>
 #include <time.h>
 
-#pragma clang diagnostic push
+#ifdef __clang__
 #pragma clang diagnostic ignored "-Wextra-semi"
+#pragma clang diagnostic push
+#else
+#pragma GCC diagnostic ignored "-Wpedantic"
+#pragma GCC diagnostic push
+#endif
 #define G_LOG_DOMAIN "libnotify"
 #include "libnotify/notify.h"
+#ifdef __clang__
 #pragma clang diagnostic pop
+#else
+#pragma GCC diagnostic pop
+#endif
 
 #include "log.h"
 #include "util.h"

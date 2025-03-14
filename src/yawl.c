@@ -707,8 +707,8 @@ static RESULT load_config(const char *config_name, struct options *opts) {
     return result;
 }
 
-/* Note that we don't care about freeing things from main() since that's handled
-   either when execv() is called or when the process exits due to an error. */
+/* Note that we don't *really* care about freeing things from main(), since that's handled
+   either when execv() is called or when the process exits. */
 int main(int argc, char *argv[]) {
     struct options opts;
     RESULT result;
@@ -776,6 +776,10 @@ int main(int argc, char *argv[]) {
 
     /* Handle make_wrapper option */
     if (opts.make_wrapper) {
+        if (opts.exec_path && STRING_EQUALS(opts.exec_path, DEFAULT_EXEC_PATH)) {
+            LOG_WARNING("You need to pass an exec= verb to create a wrapper. Use YAWL_VERBS=\"help\" for examples.");
+            return 0;
+        }
         result = create_wrapper(opts.make_wrapper, &opts);
         LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to create wrapper configuration");
 
