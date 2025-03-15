@@ -234,7 +234,7 @@ static RESULT verify_runtime(const char *runtime_path) {
     /* Check if pv-verify exists */
     join_paths(pv_verify_path, runtime_path, "pressure-vessel/bin/pv-verify");
 
-    if (access(pv_verify_path, X_OK) != 0) {
+    if (!is_exec_file(pv_verify_path)) {
         LOG_ERROR("pv-verify not found. Runtime may be corrupt or incomplete.");
         free(pv_verify_path);
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
@@ -278,7 +278,7 @@ static RESULT verify_runtime(const char *runtime_path) {
     char *entry_point = NULL;
     join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
 
-    if (access(entry_point, X_OK) != 0) {
+    if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
         free(entry_point);
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
@@ -426,10 +426,12 @@ static char *get_top_libdir(const char *exec_path) {
         *last_slash = '\0';
 
     last_slash = strrchr(dirname, '/');
-    if (last_slash && STRING_EQUALS(last_slash, "/bin"))
+    if (last_slash && STRING_EQUALS(last_slash, "/bin")) {
         *last_slash = '\0';
-    else
+    } else {
         free(dirname);
+        return NULL;
+    }
     return dirname;
 }
 
@@ -803,14 +805,14 @@ int main(int argc, char *argv[]) {
     result = setup_runtime(&opts);
     LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed setting up the runtime");
 
-    if (access(opts.exec_path, X_OK) != 0) {
+    if (!is_exec_file(opts.exec_path)) {
         LOG_ERROR("Executable not found or not executable: %s", opts.exec_path);
         return 1;
     }
 
     char *entry_point = NULL;
     join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
-    if (access(entry_point, X_OK) != 0) {
+    if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
         return 1;
     }
@@ -863,7 +865,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (prctl(PR_SET_CHILD_SUBREAPER, 1UL, 0UL, 0UL, 0UL) == -1)
+    if (prctl(PR_SET_CHILD_SUBREAPER, 1UL) == -1)
         LOG_WARNING("Failed to set child subreaper status: %s", strerror(errno));
 
     log_cleanup();

@@ -20,17 +20,18 @@
 
 #pragma once
 
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <pwd.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <ctype.h>
 
 #include "result.h"
 
@@ -107,6 +108,14 @@ static inline char *get_base_name(const char *path) {
     free(path_copy);
 
     return base_name;
+}
+
+/* Is the file a real executable file? */
+static inline bool is_exec_file(const char *path) {
+    struct stat file_stat;
+    if (stat(path, &file_stat) != 0 || !S_ISREG(file_stat.st_mode) || (file_stat.st_mode & S_IXUSR) == 0)
+        return false;
+    return true;
 }
 
 /* Remove specified verbs from YAWL_VERBS environment variable */
