@@ -750,14 +750,12 @@ int main(int argc, char *argv[]) {
         const char *verbs_to_remove[] = {"update", "check"};
         RESULT remove_result = remove_verbs_from_env(verbs_to_remove, 2);
 
-        result = handle_updates(opts.check, opts.update);
-        if (FAILED(result)) {
-            LOG_RESULT(LOG_WARNING, result, "Update unsuccessful");
-            result = RESULT_OK;
-        } else if (RESULT_CODE(result) == E_UPDATE_PERFORMED) {
+        RESULT update_result = handle_updates(opts.check, opts.update);
+        if (FAILED(update_result)) {
+            LOG_RESULT(LOG_WARNING, update_result, "Update unsuccessful");
+            LOG_DEBUG_RESULT(update_result, "May have hit rate limit");
+        } else if (RESULT_CODE(update_result) == E_UPDATE_PERFORMED) {
             LOG_INFO("Update installed.");
-            result = RESULT_OK;
-
             /* Restart if there are verbs remaining to be processed. */
             if (RESULT_CODE(remove_result) != E_NOT_FOUND) {
                 LOG_INFO("Additional verbs supplied, restarting...");
@@ -767,7 +765,7 @@ int main(int argc, char *argv[]) {
         }
         if (RESULT_CODE(remove_result) == E_NOT_FOUND) {
             LOG_DEBUG("Exiting now, no more verbs to process.");
-            return 0;
+            return RESULT_CODE(update_result);
         }
     }
 
