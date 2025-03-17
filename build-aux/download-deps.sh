@@ -11,6 +11,7 @@ XZ_VERSION="5.6.4"
 ZSTD_VERSION="1.5.7"
 OPENSSL_VERSION="3.2.1"
 CURL_VERSION="8.12.1"
+LIBFFI_VERSION="3.4.7"
 GDK_PIXBUF_VERSION="2.42.12"
 LIBNOTIFY_VERSION="0.8.4"
 JSON_GLIB_VERSION="1.10.6"
@@ -379,6 +380,32 @@ case "$LIB" in
         cat "src/tool_ca_embed.c" >> "$PREFIX/include/curl/ca_cert_embed.h"
         ;;
 
+    libffi)
+        # Required for gdk/glib stuff
+        if [ ! -d "libffi-$LIBFFI_VERSION" ]; then
+            echo "Downloading libffi-$LIBFFI_VERSION..."
+            download_file "https://github.com/libffi/libffi/releases/download/v$LIBFFI_VERSION/libffi-$LIBFFI_VERSION.tar.gz" "libffi.tar.gz"
+            tar -xzf libffi.tar.gz
+            rm libffi.tar.gz
+        fi
+
+        cd "libffi-$LIBFFI_VERSION"
+
+        ./configure \
+            --prefix="$PREFIX" \
+            --disable-shared \
+            --enable-static \
+            CC="$CC" \
+            CXX="$CXX" \
+            CPPFLAGS="$CPPFLAGS" \
+            CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS" \
+            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
+
+        make -j"$JOBS"
+        make install
+        ;;
+
     gdk-pixbuf)
         if [ ! -d "gdk-pixbuf-$GDK_PIXBUF_VERSION" ]; then
             echo "Downloading gdk-pixbuf-$GDK_PIXBUF_VERSION (required for libnotify)..."
@@ -396,7 +423,7 @@ case "$LIB" in
 pkg-config --static "\$@"
 EOF
         rm -f "$PREFIX/lib/pkgconfig/{gthread*.pc,gobject*.pc,glib*.pc,gmodule-no-export*.pc,gmodule-export*.pc,gmodule*.pc,girepository*.pc,gio-unix*.pc,gio*.pc,gdk-pixbuf*.pc}"
-        find "${PREFIX:?}"/ '(' -iregex ".*deps/prefix.*glib.*" -o -iregex ".*deps/prefix.*ffi.*" -o -iregex ".*deps/prefix.*pcre.*" ')' -exec rm -rf '{''}' '+'
+        find "${PREFIX:?}"/ '(' -iregex ".*deps/prefix.*glib.*" -o -iregex ".*deps/prefix.*pcre.*" ')' -exec rm -rf '{''}' '+'
         FLAGS_MESON=("env"
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
             "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"

@@ -46,10 +46,20 @@ PKG_PROG_PKG_CONFIG
 deps_builddir="$PWD/deps/build"
 deps_prefix="$PWD/deps/prefix"
 build_prefix="$PWD/deps/yawl"
-mkdir -p "$deps_builddir" "$deps_prefix" "$deps_prefix/yawl/"{lib,include} "$build_prefix"
+mkdir -p "$deps_builddir" "$deps_prefix" "$deps_prefix/yawl/"{lib,include} "$build_prefix/"{lib,include}
 
 musl_is_dumb="$deps_builddir/musl_temp"
-mkdir -p "$musl_is_dumb"
+musl_is_dumb2="$deps_builddir/musl_temp2"
+mkdir -p "$musl_is_dumb" "$musl_is_dumb2"/linux
+
+AS_IF([test -n "$LIMITS_H"], [],
+    [LIMITS_H="/usr/include/linux/limits.h"]
+)
+AC_SUBST([LIMITS_H])
+AC_CHECK_FILE([$LIMITS_H], [],
+    [AC_MSG_ERROR([Could not find the linux/limits.h header (set LIMITS_H to specify one manually)])
+])
+cp $LIMITS_H "$musl_is_dumb2"/linux/
 
 AS_IF([test -n "$MUSL_INCDIR"], [],
     [MUSL_INCDIR="/usr/lib/musl/include/sys"]
@@ -66,7 +76,7 @@ $LN_S "$MUSL_INCDIR" "$musl_is_dumb/linux"
 # Always enforce static linking, and make small binaries
 export CC="$CC"
 export CXX="$CXX"
-shared_includes="-I$musl_is_dumb -I$deps_prefix/include"
+shared_includes="-I$musl_is_dumb -I$musl_is_dumb2 -I$deps_prefix/include"
 shared_cflags="$shared_includes -Oz -march=x86-64 -mtune=generic -static -static-libgcc -flto=auto -ffat-lto-objects -ffunction-sections -fdata-sections \
     -fcf-protection=full -fstack-clash-protection -fstack-protector-all"
 export CPPFLAGS="$shared_includes"
@@ -115,7 +125,7 @@ export PKG_CONFIG_LIBDIR="$deps_prefix/lib:$PKG_CONFIG_LIBDIR"
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
 # Check for required headers
-AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h])
+AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h linux/limits.h])
 
 if test "x$ac_cv_header_linux_mman_h" != "xyes"
 then
@@ -136,71 +146,76 @@ AC_CHECK_FILE([$CERT_BUNDLE], [],
 if ! test -f "$build_prefix/lib/libunistring.a"; then
     AC_MSG_NOTICE([Building libunistring])
     sh build-aux/download-deps.sh libunistring "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libunistring])
-    cp $deps_prefix/{lib,yawl/lib}/libunistring.a
+    cp $deps_prefix/lib/libunistring.a $build_prefix/lib/
 fi
 
 # Download and build libidn2 (needed for curl/openssl)
 if ! test -f "$build_prefix/lib/libidn2.a"; then
     AC_MSG_NOTICE([Building libidn2])
     sh build-aux/download-deps.sh libidn2 "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libidn2])
-    cp $deps_prefix/{lib,yawl/lib}/libidn2.a
+    cp $deps_prefix/lib/libidn2.a $build_prefix/lib/
 fi
 
 # Download and build libpsl (needed for curl/openssl)
 if ! test -f "$build_prefix/lib/libpsl.a"; then
     AC_MSG_NOTICE([Building libpsl])
     sh build-aux/download-deps.sh libpsl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libpsl])
-    cp $deps_prefix/{lib,yawl/lib}/libpsl.a
+    cp $deps_prefix/lib/libpsl.a $build_prefix/lib/
 fi
 
 # Download and build libz
 if ! test -f "$build_prefix/lib/libz.a"; then
     AC_MSG_NOTICE([Building libz])
     sh build-aux/download-deps.sh libz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libz])
-    cp $deps_prefix/{lib,yawl/lib}/libz.a
+    cp $deps_prefix/lib/libz.a $build_prefix/lib/
 fi
 
 # Download and build xz
 if ! test -f "$build_prefix/lib/liblzma.a"; then
     AC_MSG_NOTICE([Building xz])
     sh build-aux/download-deps.sh xz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build xz])
-    cp $deps_prefix/{lib,yawl/lib}/liblzma.a
+    cp $deps_prefix/lib/liblzma.a $build_prefix/lib/
 fi
 
 # Download and build zstd
 if ! test -f "$build_prefix/lib/libzstd.a"; then
     AC_MSG_NOTICE([Building zstd])
     sh build-aux/download-deps.sh zstd "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build zstd])
-    cp $deps_prefix/{lib,yawl/lib}/libzstd.a
+    cp $deps_prefix/lib/libzstd.a $build_prefix/lib/
 fi
 
 # Download and build openssl
 if ! test -f "$build_prefix/lib/libssl.a" || ! test -f "$build_prefix/lib/libcrypto.a"; then
     AC_MSG_NOTICE([Building openssl])
     sh build-aux/download-deps.sh openssl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build openssl])
-    cp $deps_prefix/{lib,yawl/lib}/libssl.a
-    cp $deps_prefix/{lib,yawl/lib}/libcrypto.a
-    cp -r $deps_prefix/{include,yawl/include}/openssl
+    cp $deps_prefix/lib/libssl.a $build_prefix/lib/
+    cp $deps_prefix/lib/libcrypto.a $build_prefix/lib/
+    cp -r $deps_prefix/include/openssl $build_prefix/include/
 fi
 
 # Download and build libarchive
 if ! test -f "$build_prefix/lib/libarchive.a"; then
     AC_MSG_NOTICE([Building libarchive])
     sh build-aux/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
-    cp $deps_prefix/{lib,yawl/lib}/libarchive.a
-    cp $deps_prefix/{include/archive*,yawl/include}
+    cp $deps_prefix/lib/libarchive.a $build_prefix/lib/
+    cp $deps_prefix/include/archive* $build_prefix/include/
 fi
 
 # Download and build curl
 if ! test -f "$build_prefix/lib/libcurl.a"; then
     AC_MSG_NOTICE([Building curl])
     sh build-aux/download-deps.sh curl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build curl])
-    cp $deps_prefix/{lib,yawl/lib}/libcurl.a
-    cp -r $deps_prefix/{include,yawl/include}/curl
+    cp $deps_prefix/lib/libcurl.a $build_prefix/lib/
+    cp -r $deps_prefix/include/curl $build_prefix/include/
 fi
 
 # Download and build libnotify and json-glib
 if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/libjson-glib-1.0.a" || ! test -f "$build_prefix/lib/libgdk_pixbuf-2.0.a" || ! test -f "$build_prefix/lib/libglib-2.0.a"; then
+    # Download and build libffi (required for gdk-pixbuf)
+    if ! test -f "$deps_prefix/lib/libffi.a"; then
+        AC_MSG_NOTICE([Building libffi])
+        sh build-aux/download-deps.sh libffi "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libffi])
+    fi
     # Download and build gdk-pixbuf (only required for libnotify)
     if ! test -f "$deps_prefix/lib/libgdk_pixbuf-2.0.a"; then
         AC_MSG_NOTICE([Building gdk-pixbuf])
@@ -215,25 +230,19 @@ if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/lib
         AC_MSG_NOTICE([Building libnotify])
         sh build-aux/download-deps.sh libnotify "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libnotify])
     fi
-    cp $deps_prefix/{lib,yawl/lib}/libnotify.a
-    cp $deps_prefix/{lib,yawl/lib}/libglib-2.0.a
-    cp $deps_prefix/{lib,yawl/lib}/libgobject-2.0.a
-    cp $deps_prefix/{lib,yawl/lib}/libgmodule-2.0.a
-    cp $deps_prefix/{lib,yawl/lib}/libgio-2.0.a
-    cp $deps_prefix/{lib,yawl/lib}/libgirepository-2.0.a
-    cp $deps_prefix/{lib,yawl/lib}/libgdk_pixbuf-2.0.a
-    cp $deps_prefix/{lib,yawl/lib}/libffi.a
-    cp -r $deps_prefix/{include,yawl/include}/libnotify
-    cp -r $deps_prefix/{include,yawl/include}/glib-2.0
-    cp -r $deps_prefix/{include,yawl/include}/gdk-pixbuf-2.0
-    cp $deps_prefix/{lib,yawl/lib}/libjson-glib-1.0.a
-    cp -r $deps_prefix/{include,yawl/include}/json-glib-1.0/
-fi
-
-# Now reset everything to a prefix with only the necessary deps to build yawl
-if test -f "$deps_prefix/yawl/lib/libnotify.a"; then
-    rm -rf "$build_prefix"
-    cp -r $deps_prefix/yawl "$build_prefix"
+    cp $deps_prefix/lib/libnotify.a $build_prefix/lib/
+    cp $deps_prefix/lib/libglib-2.0.a $build_prefix/lib/
+    cp $deps_prefix/lib/libgobject-2.0.a $build_prefix/lib/
+    cp $deps_prefix/lib/libgmodule-2.0.a $build_prefix/lib/
+    cp $deps_prefix/lib/libgio-2.0.a $build_prefix/lib/
+    cp $deps_prefix/lib/libgirepository-2.0.a $build_prefix/lib/
+    cp $deps_prefix/lib/libgdk_pixbuf-2.0.a $build_prefix/lib/
+    cp $deps_prefix/lib/libffi.a $build_prefix/lib/
+    cp -r $deps_prefix/include/libnotify $build_prefix/include/
+    cp -r $deps_prefix/include/glib-2.0 $build_prefix/include/
+    cp -r $deps_prefix/include/gdk-pixbuf-2.0 $build_prefix/include/
+    cp $deps_prefix/lib/libjson-glib-1.0.a $build_prefix/lib/
+    cp -r $deps_prefix/include/json-glib-1.0/ $build_prefix/include/
 fi
 
 find "$build_prefix"/ -name '*.a' -execdir "$STRIP" --strip-unneeded '{''}' '+'
