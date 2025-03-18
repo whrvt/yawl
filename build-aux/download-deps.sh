@@ -395,6 +395,7 @@ case "$LIB" in
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
+            --enable-portable-binary \
             CC="$CC" \
             CXX="$CXX" \
             CPPFLAGS="$CPPFLAGS" \

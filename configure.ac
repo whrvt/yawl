@@ -132,6 +132,11 @@ then
     AC_MSG_ERROR([Could not find the linux/mman.h header (MUSL_INCDIR=$MUSL_INCDIR is likely missing)])
 fi
 
+if test "x$ac_cv_header_linux_limits_h" != "xyes"
+then
+    AC_MSG_ERROR([Could not find the linux/limits.h header (LIMITS_H=$LIMITS_H is likely missing)])
+fi
+
 AS_IF([test -n "$CERT_BUNDLE"], [],
     [CERT_BUNDLE="/etc/ssl/certs/ca-bundle.crt"]
 )
