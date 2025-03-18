@@ -6,14 +6,61 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_PREFIX_DEFAULT([dist]) # default `make install`s to ./dist/bin/ (modify with --prefix=)
 
-AC_PROG_CC([musl-gcc])
-if test -z "$CC"; then
-    AC_MSG_ERROR([musl-gcc not found])
-fi
-AC_PROG_CXX([musl-gcc])
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
+
+# Set up build directories
+deps_builddir="$PWD/deps/build"
+deps_prefix="$PWD/deps/prefix"
+build_prefix="$PWD/deps/yawl"
+mkdir -p "$deps_builddir" "$deps_prefix"/{lib,include} "$build_prefix/"{lib,include}
+
+# Make some wrapper shims for the dependencies to compile happily
+export PATH="${deps_builddir}:${PWD}/build-aux:${PATH}"
+AC_SUBST([PATH])
+
+AC_DEFUN([AC_PROG_ZIG], [
+    AC_CHECK_PROG([ZIG], [zig], [zig])
+    if test -z "$ZIG"; then
+        AC_MSG_ERROR([zig not found])
+    fi
+])
+AC_PROG_ZIG
+
+install -Dm755 /dev/stdin "$deps_builddir"/zigcc <<EOF
+#!/usr/bin/env sh
+zig cc -target x86_64-linux-musl -Qunused-arguments "\$@"
+EOF
+AC_PROG_CC([zigcc])
+if test -z "$CC"; then
+    AC_MSG_ERROR([zig cc not found])
+fi
+
+install -Dm755 /dev/stdin "$deps_builddir"/zigcpp <<EOF
+#!/usr/bin/env sh
+zig c++ -target x86_64-linux-musl -Qunused-arguments "\$@"
+EOF
+AC_PROG_CXX([zigcpp])
+if test -z "$CXX"; then
+    AC_MSG_ERROR([zig c++ not found])
+fi
+
+rm -f "$deps_builddir"/pkg-config # don't recurse infinitely :)
+
+PKG_PROG_PKG_CONFIG
+
+install -Dm755 /dev/stdin "$deps_builddir"/pkg-config <<EOF
+#!/usr/bin/env sh
+$PKG_CONFIG --static "\$@"
+EOF
+
+export PKG_CONFIG="$deps_builddir/pkg-config"
+AC_SUBST([PKG_CONFIG])
+export PKG_CONFIG_PATH="$deps_prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
+AC_SUBST([PKG_CONFIG_PATH])
+export PKG_CONFIG_LIBDIR="$deps_prefix/lib:$PKG_CONFIG_LIBDIR"
+AC_SUBST([PKG_CONFIG_LIBDIR])
 
 AC_DEFUN([AC_PROG_PERL], [
     AC_CHECK_PROG([PERL], [perl], [perl])
@@ -39,67 +86,6 @@ AC_DEFUN([AC_PROG_AR], [
 ])
 AC_PROG_AR
 
-# Check pkg-config
-PKG_PROG_PKG_CONFIG
-
-# Set up build directories
-deps_builddir="$PWD/deps/build"
-deps_prefix="$PWD/deps/prefix"
-build_prefix="$PWD/deps/yawl"
-mkdir -p "$deps_builddir" "$deps_prefix" "$deps_prefix/yawl/"{lib,include} "$build_prefix/"{lib,include}
-
-musl_is_dumb="$deps_builddir/musl_temp"
-musl_is_dumb2="$deps_builddir/musl_temp2"
-mkdir -p "$musl_is_dumb" "$musl_is_dumb2"/linux
-
-AS_IF([test -n "$LIMITS_H"], [],
-    [LIMITS_H="/usr/include/linux/limits.h"]
-)
-AC_SUBST([LIMITS_H])
-AC_CHECK_FILE([$LIMITS_H], [],
-    [AC_MSG_ERROR([Could not find the linux/limits.h header (set LIMITS_H to specify one manually)])
-])
-cp $LIMITS_H "$musl_is_dumb2"/linux/
-
-AS_IF([test -n "$MUSL_INCDIR"], [],
-    [MUSL_INCDIR="/usr/lib/musl/include/sys"]
-)
-AC_SUBST([MUSL_INCDIR])
-AC_CHECK_FILE([$MUSL_INCDIR], [],
-    [AC_MSG_ERROR([Could not find the musl header files (set MUSL_INCDIR to specify a musl/include folder manually)])
-])
-AS_IF([test -L "$musl_is_dumb/linux"],
-    [unlink "$musl_is_dumb/linux"]
-)
-$LN_S "$MUSL_INCDIR" "$musl_is_dumb/linux"
-
-# Always enforce static linking, and make small binaries
-export CC="$CC"
-export CXX="$CXX"
-shared_includes="-I$musl_is_dumb -I$musl_is_dumb2 -I$deps_prefix/include"
-shared_cflags="$shared_includes -Oz -march=x86-64 -mtune=generic -static -static-libgcc -flto=auto -ffat-lto-objects -ffunction-sections -fdata-sections \
-    -fcf-protection=full -fstack-clash-protection -fstack-protector-all"
-export CPPFLAGS="$shared_includes"
-export CFLAGS="$shared_cflags"
-export CXXFLAGS="$shared_cflags"
-export LDFLAGS="-L$deps_prefix/lib -static -static-libgcc -flto=auto -ffat-lto-objects -Wl,-O2,--gc-sections,-s -Wl,-z,nodlopen \
-    -Wl,-z,noexecstack -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--no-copy-dt-needed-entries"
-export STRIP="$STRIP"
-export AR="$AR"
-
-export PTHREAD_EXTLIBS="-Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
-
-AC_SUBST([CC])
-AC_SUBST([CXX])
-AC_SUBST([CPPFLAGS])
-AC_SUBST([CFLAGS])
-AC_SUBST([CXXFLAGS])
-AC_SUBST([LDFLAGS])
-AC_SUBST([STRIP])
-AC_SUBST([AR])
-AC_SUBST([PTHREAD_EXTLIBS])
-
-# Get number of processors for parallel builds
 AC_DEFUN([AX_COUNT_CPUS], [
     AC_CHECK_PROG([GETCONF], [getconf], [getconf])
     AS_IF([test -n "$GETCONF"],
@@ -110,19 +96,31 @@ AC_DEFUN([AX_COUNT_CPUS], [
 ])
 AX_COUNT_CPUS
 
-# Set make flags for parallel build
 export MAKEFLAGS="-j$CPU_COUNT"
 AC_SUBST([MAKEFLAGS])
 
-# Add build-aux to PATH for helper scripts
-export PATH="$PWD/build-aux:$PATH"
+export CC="$CC"
+export CXX="$CXX"
+shared_includes="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$deps_prefix/include" # It doesn't even compile without LTO, I tried...
+shared_flags="-Os -march=x86_64 -mtune=x86_64 -fwrapv -fno-strict-aliasing -flto=thin -ffat-lto-objects \
+    -ffunction-sections -fdata-sections -pthread -fcf-protection=full -fstack-clash-protection -fstack-protector-all -Wa,--noexecstack \
+    -static -fPIE -static-pie -static-libsan -L$deps_prefix/lib -Wl,--gc-sections,-s -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now \
+    -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+export CPPFLAGS="$shared_includes"
+export CFLAGS="$shared_includes $shared_flags"
+export CXXFLAGS="$shared_includes $shared_flags"
+export LDFLAGS="$shared_flags"
+export STRIP="$STRIP"
+export AR="$AR"
 
-export PKG_CONFIG="pkg-config --static"
-AC_SUBST([PKG_CONFIG])
-export PKG_CONFIG_PATH="$deps_prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
-AC_SUBST([PKG_CONFIG_PATH])
-export PKG_CONFIG_LIBDIR="$deps_prefix/lib:$PKG_CONFIG_LIBDIR"
-AC_SUBST([PKG_CONFIG_LIBDIR])
+AC_SUBST([CC])
+AC_SUBST([CXX])
+AC_SUBST([CPPFLAGS])
+AC_SUBST([CFLAGS])
+AC_SUBST([CXXFLAGS])
+AC_SUBST([LDFLAGS])
+AC_SUBST([STRIP])
+AC_SUBST([AR])
 
 # Check for required headers
 AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h linux/limits.h])
@@ -215,7 +213,7 @@ if ! test -f "$build_prefix/lib/libcurl.a"; then
 fi
 
 # Download and build libnotify and json-glib
-if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/libjson-glib-1.0.a" || ! test -f "$build_prefix/lib/libgdk_pixbuf-2.0.a" || ! test -f "$build_prefix/lib/libglib-2.0.a"; then
+if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/libjson-glib-1.0.a" || ! test -f "$build_prefix/lib/libgdk_pixbuf-2.0.a" || ! test -f "$build_prefix/lib/libglib-2.0.a" || ! test -f "$build_prefix/lib/libpcre2-8.a"; then
     # Download and build libffi (required for gdk-pixbuf)
     if ! test -f "$deps_prefix/lib/libffi.a"; then
         AC_MSG_NOTICE([Building libffi])
@@ -243,6 +241,7 @@ if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/lib
     cp $deps_prefix/lib/libgirepository-2.0.a $build_prefix/lib/
     cp $deps_prefix/lib/libgdk_pixbuf-2.0.a $build_prefix/lib/
     cp $deps_prefix/lib/libffi.a $build_prefix/lib/
+    cp $deps_prefix/lib/libpcre2-8.a $build_prefix/lib/
     cp -r $deps_prefix/include/libnotify $build_prefix/include/
     cp -r $deps_prefix/include/glib-2.0 $build_prefix/include/
     cp -r $deps_prefix/include/gdk-pixbuf-2.0 $build_prefix/include/
@@ -257,31 +256,30 @@ LIBARCHIVE_CPPFLAGS="-DLIBARCHIVE_STATIC"
 
 NON_GLIB_CPPFLAGS="$LIBARCHIVE_CPPFLAGS $CURL_CPPFLAGS -I$build_prefix/include"
 
-COMMON_DEP_LIBS="-l:libidn2.a -l:libunistring.a -l:libpsl.a -l:libzstd.a -l:libz.a -l:liblzma.a"
-CURL_LIBS="-l:libcurl.a -ldl"
-LIBARCHIVE_LIBS="-l:libarchive.a"
-OPENSSL_LIBS="-l:libssl.a -l:libcrypto.a"
+COMMON_DEP_LIBS="-lidn2 -lunistring -lpsl -lz -llzma -lzstd -Wl,--no-whole-archive"
+CURL_LIBS="-lcurl"
+LIBARCHIVE_LIBS="-larchive"
+OPENSSL_LIBS="-lssl -lcrypto"
 
 NON_GLIB_LIBS="-L$build_prefix/lib $CURL_LIBS $LIBARCHIVE_LIBS $OPENSSL_LIBS $COMMON_DEP_LIBS"
-
-GLIB_CPPFLAGS="-I$build_prefix/include/glib-2.0"
+GLIB_CPPFLAGS="-I$build_prefix/include/glib-2.0 -DPCRE2_STATIC"
 GDK_PIXBUF_CPPFLAGS="-I$build_prefix/include/gdk-pixbuf-2.0"
 JSON_GLIB_CPPFLAGS="-I$build_prefix/include/json-glib-1.0"
 
 ALL_GLIB_CPPFLAGS="$GDK_PIXBUF_CPPFLAGS $JSON_GLIB_CPPFLAGS $GLIB_CPPFLAGS"
 
-GLIB_LIBS="-l:libgmodule-2.0.a -l:libgio-2.0.a -l:libgirepository-2.0.a -l:libgobject-2.0.a -l:libglib-2.0.a -l:libffi.a -lm"
-GDK_PIXBUF_LIBS="-l:libgdk_pixbuf-2.0.a"
-LIBNOTIFY_LIBS="-l:libnotify.a"
-JSON_GLIB_LIBS="-l:libjson-glib-1.0.a"
+GLIB_LIBS="-lgmodule-2.0 -lgio-2.0 -lgirepository-2.0 -lgobject-2.0 -lglib-2.0 -lpcre2-8 -lffi -lm"
+GDK_PIXBUF_LIBS="-lgdk_pixbuf-2.0"
+LIBNOTIFY_LIBS="-lnotify"
+JSON_GLIB_LIBS="-ljson-glib-1.0"
 
 ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
-
-export CPPFLAGS="-D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-export CFLAGS="-O3 -std=gnu17 -march=x86-64 -mtune=generic -static -static-libgcc -fwrapv -fno-strict-aliasing -flto=auto -ffat-lto-objects -pthread \
-    -ffunction-sections -fdata-sections -fcf-protection=full -fstack-clash-protection -fstack-protector-all \
-    -Wall -Werror -Wextra -Wpedantic -Wtrampolines -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-error=maybe-uninitialized -Wno-error=stringop-overflow"
-export LDFLAGS="-Wl,-O2,--gc-sections,-s -Wl,-z,nodlopen -Wl,-z,noexecstack -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--no-copy-dt-needed-entries"
+export CPPFLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
+export CFLAGS="-Os -std=gnu23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing -flto=thin -ffat-lto-objects \
+    -ffunction-sections -fdata-sections -fcf-protection=full -fstack-clash-protection -fstack-protector-all -Wa,--noexecstack -static -fPIE -static-pie \
+    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next \
+    -Wl,--gc-sections,-s -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+export LDFLAGS="$CFLAGS"
 
 AC_SUBST([NON_GLIB_LIBS])
 AC_SUBST([ALL_GLIB_LIBS])

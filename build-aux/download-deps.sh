@@ -66,7 +66,7 @@ case "$LIB" in
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS"
 
         make -j"$JOBS"
         make install
@@ -93,7 +93,7 @@ case "$LIB" in
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -l:libunistring.a $PTHREAD_EXTLIBS"
+            LDFLAGS="-lunistring $LDFLAGS"
 
         make -j"$JOBS"
         make install
@@ -118,7 +118,7 @@ case "$LIB" in
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS -l:libunistring.a -l:libidn2.a $PTHREAD_EXTLIBS"
+            LDFLAGS="-lunistring -lidn2 $LDFLAGS"
 
         make -j"$JOBS"
         make install
@@ -133,13 +133,13 @@ case "$LIB" in
         fi
 
         cd "zlib-ng-$LIBZ_VERSION"
-
+        sed -i 's|noltoflag="-fno-lto"||g' configure
         CC="$CC" \
         CXX="$CXX" \
         CPPFLAGS="$CPPFLAGS" \
-        CFLAGS="$CFLAGS" \
+        CFLAGS="$CFLAGS -Wl,-z,undefs" \
         CXXFLAGS="$CXXFLAGS" \
-        LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS" \
+        LDFLAGS="$LDFLAGS -Wl,-z,undefs" \
         ./configure \
             --prefix="$PREFIX" \
             --static \
@@ -177,7 +177,7 @@ case "$LIB" in
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS"
 
         make -j"$JOBS"
         make install
@@ -194,10 +194,9 @@ case "$LIB" in
         cd "zstd-$ZSTD_VERSION/lib"
 
         FLAGS_ZST=("env"
-            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -DZSTD_MULTITHREAD"
-            "CFLAGS=-pthread $CFLAGS -Wl,-pthread $LDFLAGS -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
-            "CXXFLAGS=$CFLAGS" "LDFLAGS=-pthread $LDFLAGS $PTHREAD_EXTLIBS"
-            "AR=$AR l \"$LDFLAGS $PTHREAD_EXTLIBS\""
+            "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -DZSTD_MULTITHREAD -DZSTD_HAVE_WEAK_SYMBOLS=0 -DZSTD_TRACE=0"
+            "CFLAGS=$CFLAGS $LDFLAGS"
+            "CXXFLAGS=$CFLAGS" "LDFLAGS=$LDFLAGS"
         )
 
         "${FLAGS_ZST[@]}" make -j"$JOBS" libzstd.a && "${FLAGS_ZST[@]}" make -j"$JOBS" libzstd.pc && \
@@ -230,11 +229,12 @@ case "$LIB" in
         CPPFLAGS="$CPPFLAGS" \
         CFLAGS="$CFLAGS" \
         CXXFLAGS="$CXXFLAGS" \
-        LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS" \
+        LDFLAGS="$LDFLAGS" \
         ./config \
             --prefix="$PREFIX" \
             --openssldir="$PREFIX/ssl" \
             no-shared \
+            no-legacy \
             no-afalgeng \
             no-quic \
             no-weak-ssl-ciphers \
@@ -308,7 +308,7 @@ case "$LIB" in
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS"
 
         make -j"$JOBS"
         make install
@@ -368,7 +368,7 @@ case "$LIB" in
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LIBS="-l:libunistring.a -l:libidn2.a -l:libpsl.a -l:libz.a -l:libssl.a -l:libcrypto.a $PTHREAD_EXTLIBS" \
+            LIBS="-lunistring -lidn2 -lpsl -lz -lssl -lcrypto" \
             LDFLAGS="$LDFLAGS"
 
         make -j"$JOBS"
@@ -401,7 +401,7 @@ case "$LIB" in
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS $PTHREAD_EXTLIBS"
+            LDFLAGS="$LDFLAGS"
 
         make -j"$JOBS"
         make install
@@ -419,20 +419,15 @@ case "$LIB" in
 
         # meson is absolutely UNREAL
         sed -i 's|.*thumbnailer.*||g' meson.build
-        install -Dm755 /dev/stdin "$PWD"/pkgconfigstatic <<EOF
-#!/usr/bin/env bash
-pkg-config --static "\$@"
-EOF
         rm -f "$PREFIX/lib/pkgconfig/{gthread*.pc,gobject*.pc,glib*.pc,gmodule-no-export*.pc,gmodule-export*.pc,gmodule*.pc,girepository*.pc,gio-unix*.pc,gio*.pc,gdk-pixbuf*.pc}"
         find "${PREFIX:?}"/ '(' -iregex ".*deps/prefix.*glib.*" -o -iregex ".*deps/prefix.*pcre.*" ')' -exec rm -rf '{''}' '+'
         FLAGS_MESON=("env"
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
-            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS"
         )
         "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
-                            --default-library=static \
                             -Dpng=disabled \
                             -Dtiff=disabled \
                             -Djpeg=disabled \
@@ -448,7 +443,35 @@ EOF
                             -Dtests=false \
                             -Dinstalled_tests=false \
                             -Dgio_sniffing=false \
-                            -Dglib:libmount=disabled \
+                            -Dprefer_static=true \
+                            -Db_lto=true \
+                            -Db_lto_threads="$JOBS" \
+                            -Db_staticpic=true \
+                            -Db_sanitize=none \
+                            -Ddefault_library=static \
+                            -Ddefault_both_libraries=static \
+                            -Dpcre2:b_sanitize=none \
+                            -Dpcre2:test=false \
+                            -Dpcre2:prefer_static=true \
+                            -Dpcre2:b_lto=true \
+                            -Dpcre2:b_lto_threads="$JOBS" \
+                            -Dpcre2:b_staticpic=true \
+                            -Dpcre2:default_library=static \
+                            -Dpcre2:default_both_libraries=static \
+                            -Dgvdb:b_sanitize=none \
+                            -Dgvdb:prefer_static=true \
+                            -Dgvdb:b_lto=true \
+                            -Dgvdb:b_lto_threads="$JOBS" \
+                            -Dgvdb:b_staticpic=true \
+                            -Dgvdb:default_library=static \
+                            -Dgvdb:default_both_libraries=static \
+                            -Dglib:b_sanitize=none \
+                            -Dglib:prefer_static=true \
+                            -Dglib:b_lto=true \
+                            -Dglib:b_lto_threads="$JOBS" \
+                            -Dglib:b_staticpic=true \
+                            -Dglib:default_library=static \
+                            -Dglib:default_both_libraries=static \
                             -Dglib:man=false \
                             -Dglib:man-pages=disabled \
                             -Dglib:dtrace=disabled \
@@ -489,23 +512,25 @@ EOF
         sed -i 's|.*subdir.*tools.*||g' meson.build
         sed -i 's|libnotify_lib = shared|libnotify_lib = static|g' "$PWD/libnotify/meson.build"
         sed -i 's|.*LT_CURRENT.*||g' "$PWD/libnotify/meson.build"
-        install -Dm755 /dev/stdin "$PWD"/pkgconfigstatic <<EOF
-#!/usr/bin/env bash
-pkg-config --static "\$@"
-EOF
         FLAGS_MESON=("env"
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
-            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS"
         )
         "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
-                            --default-library=static \
                             -Dtests=false \
                             -Dintrospection=disabled \
                             -Dman=false \
                             -Dgtk_doc=false \
-                            -Ddocbook_docs=disabled build . 
+                            -Ddocbook_docs=disabled \
+                            -Dprefer_static=true \
+                            -Db_lto=true \
+                            -Db_lto_threads="$JOBS" \
+                            -Db_sanitize=none \
+                            -Ddefault_library=static \
+                            -Ddefault_both_libraries=static \
+                            -Db_staticpic=true build . 
         "${FLAGS_MESON[@]}" meson compile -C build
         "${FLAGS_MESON[@]}" meson install -C build
         ;;
@@ -519,19 +544,13 @@ EOF
         fi
 
         cd "json-glib-$JSON_GLIB_VERSION"
-
-        install -Dm755 /dev/stdin "$PWD"/pkgconfigstatic <<EOF
-#!/usr/bin/env bash
-pkg-config --static "\$@"
-EOF
         FLAGS_MESON=("env"
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
-            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS $PTHREAD_EXTLIBS" "PKG_CONFIG=$PWD/pkgconfigstatic"
+            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS"
         )
         "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
-                            --default-library=static \
                             -Dintrospection=disabled \
                             -Ddocumentation=disabled \
                             -Dgtk_doc=disabled \
@@ -539,7 +558,14 @@ EOF
                             -Dtests=false \
                             -Dconformance=false \
                             -Dnls=disabled \
-                            -Dinstalled_tests=false build . 
+                            -Dprefer_static=true \
+                            -Dinstalled_tests=false \
+                            -Db_sanitize=none \
+                            -Db_lto=true \
+                            -Db_lto_threads="$JOBS" \
+                            -Ddefault_library=static \
+                            -Ddefault_both_libraries=static \
+                            -Db_staticpic=true build . 
         "${FLAGS_MESON[@]}" meson compile -C build
         "${FLAGS_MESON[@]}" meson install -C build
         ;;
