@@ -26,6 +26,8 @@ Makefile.in
 /stamp-h1
 /yawl
 
+/assets/external/
+
 /deps/
 /deps-clean/
 

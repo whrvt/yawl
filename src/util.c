@@ -20,18 +20,11 @@
 
 #include <wordexp.h>
 
-#include "openssl/evp.h"
-
-/* This file does not normally exist, but it contains embedded CA certificate
-   data generated as part of the curl build process, and we move it here to be
-   able to use it for CURLOPT_CAINFO_BLOB */
-#include "curl/ca_cert_embed.h"
-
 #include "archive.h"
 #include "archive_entry.h"
 #include "curl/curl.h"
-
 #include "log.h"
+#include "openssl/evp.h"
 #include "util.h"
 
 void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, ...) {
@@ -330,6 +323,14 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
 
     return RESULT_OK;
 }
+
+/* This file is just an SSL CA certificate bundle, which we use to make secure requests with curl
+ * (with CURLOPT_CAINFO_BLOB), without needing to rely on this data being found by curl/OpenSSL on the host */
+static const unsigned char curl_ca_embed[] = {
+#ifndef c23 /* intellisense rubbish */
+#embed "../assets/external/cacert.pem"
+#endif
+};
 
 RESULT download_file(const char *url, const char *output_path, char **headers) {
     if (!url || !output_path)

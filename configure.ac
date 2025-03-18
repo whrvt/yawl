@@ -136,16 +136,6 @@ then
     AC_MSG_ERROR([Could not find the linux/limits.h header])
 fi
 
-AS_IF([test -n "$CERT_BUNDLE"], [],
-    [CERT_BUNDLE="/etc/ssl/certs/ca-bundle.crt"]
-)
-export CERT_BUNDLE
-AC_SUBST([CERT_BUNDLE])
-
-AC_CHECK_FILE([$CERT_BUNDLE], [],
-    [AC_MSG_ERROR([Could not find an ssl certificate bundle (set CERT_BUNDLE to specify a ca-bundle.crt manually)])]
-)
-
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$build_prefix/lib/libunistring.a"; then
     AC_MSG_NOTICE([Building libunistring])
@@ -252,6 +242,20 @@ fi
 
 find "$build_prefix"/ -name '*.a' -execdir "$STRIP" --strip-unneeded '{''}' '+'
 
+# Now download the CA certificate bundle to embed and use with curl
+if ! test -f "$PWD/assets/external/cacert.pem"; then
+    AC_MSG_NOTICE([Downloading CA certificate bundle for curl])
+    sh build-aux/download-deps.sh cacert "$PWD/assets/external/" "$PWD/assets/external/" ||
+        AC_MSG_ERROR([Failed to download the curl embedded certificate bundle, download it from https://curl.se/ca/cacert.pem and place it in assets/])
+fi
+
+# Get the bwrap-userns-restrict file to embed for AppArmor integration too
+if ! test -f "$PWD/assets/external/bwrap-userns-restrict"; then
+    AC_MSG_NOTICE([Downloading bwrap-userns-restrict to fix AppArmor])
+    sh build-aux/download-deps.sh bwrap "$PWD/assets/external/" "$PWD/assets/external/" ||
+        AC_MSG_ERROR([Failed to download the bwrap-userns-restrict file, find another source for it (taking it out of an Ubuntu/Debian package should work) and place it in assets/external/])
+fi
+
 CURL_CPPFLAGS="-DCURL_STATICLIB -DWITH_GZFILEOP"
 LIBARCHIVE_CPPFLAGS="-DLIBARCHIVE_STATIC"
 
@@ -297,7 +301,6 @@ AC_SUBST([PKG_CONFIG_PATH])
 export PKG_CONFIG_LIBDIR=""
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
-AC_CHECK_HEADERS([curl/ca_cert_embed.h], [], [AC_MSG_ERROR([Missing curl embedded certificate header, need to rebuild curl])])
 AC_CHECK_FUNCS(renameat renameat2)
 
 # Generate Makefile

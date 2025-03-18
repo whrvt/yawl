@@ -19,7 +19,6 @@
  */
 
 #include "apparmor.h"
-#include "bwrap_data.h"
 #include "log.h"
 #include "util.h"
 
@@ -80,7 +79,19 @@ static RESULT test_container(const char *entry_point) {
     return RESULT_OK;
 }
 
-/* Write the AppArmor profile to a temporary file */
+/*
+ * Data from the /usr/share/apparmor/extra-profiles/bwrap-userns-restrict file from
+ * http://ftp.us.debian.org/debian/pool/main/a/apparmor/apparmor-profiles_4.1.0~beta5-3_all.deb
+ *
+ * Allows pressure-vessel to run with AppArmor enabled, i.e. on Ubuntu 24+ or Debian
+ * umu-launcher also installs this as part of its .deb package
+ */
+static const unsigned char bwrap_userns_restrict[] = {
+#ifndef c23 /* intellisense rubbish */
+#embed "../assets/external/bwrap-userns-restrict"
+#endif
+};
+
 static RESULT write_temp_apparmor_profile(char **temp_path) {
     FILE *fp = NULL;
 
@@ -96,7 +107,7 @@ static RESULT write_temp_apparmor_profile(char **temp_path) {
         return result;
     }
 
-    if (fwrite(bwrap_userns_restrict, 1, bwrap_userns_restrict_len, fp) != bwrap_userns_restrict_len) {
+    if (fwrite(bwrap_userns_restrict, 1, sizeof(bwrap_userns_restrict), fp) != sizeof(bwrap_userns_restrict)) {
         RESULT result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to write AppArmor profile data");
         fclose(fp);
@@ -127,9 +138,9 @@ static RESULT install_apparmor_profile(void) {
 
     LOG_INFO("Installing AppArmor profile to enable container functionality...");
     LOG_SYSTEM("Please enter your password when prompted.\nThis just installs a file to "
-            "/etc/apparmor.d/, which gives enough permissions to the pressure-vessel container "
-            "to function properly.\nIf you don't trust me, follow this guide to install it manually:\n"
-            "https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
+               "/etc/apparmor.d/, which gives enough permissions to the pressure-vessel container "
+               "to function properly.\nIf you don't trust me, follow this guide to install it manually:\n"
+               "https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
 
     /* Create the command to install the profile */
     append_sep(install_cmd, " ", "pkexec", "sh", "-c", "'mkdir -p " APPARMOR_DIR " && cp", temp_profile_path,
@@ -172,8 +183,8 @@ RESULT handle_apparmor(const char *entry_point) {
         LOG_RESULT(LOG_DEBUG, result, "Failed to install AppArmor profile");
 
         LOG_SYSTEM("Failed to install AppArmor profile. Container may not work correctly.\n"
-                "Please follow this guide to manually install the AppArmor profile:\n"
-                "https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
+                   "Please follow this guide to manually install the AppArmor profile:\n"
+                   "https://github.com/ocaml/opam/issues/5968#issuecomment-2151748424");
         return result;
     }
 
@@ -184,7 +195,7 @@ RESULT handle_apparmor(const char *entry_point) {
         LOG_RESULT(LOG_DEBUG, result, "Container still not working after AppArmor profile installation");
 
         LOG_SYSTEM("Container still not working after AppArmor profile installation.\n"
-                "You may need to restart the system for AppArmor changes to take effect.");
+                   "You may need to restart the system for AppArmor changes to take effect.");
         return result;
     }
 

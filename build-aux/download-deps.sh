@@ -383,11 +383,6 @@ case "$LIB" in
 
         make -j"$JOBS"
         make install
-
-        # Copy the auto-generated ca certificate data to a header we can use for yawl 
-        # (contains the `const unsigned char curl_ca_embed[]` blob of data)
-        echo "#pragma once" > "$PREFIX/include/curl/ca_cert_embed.h"
-        cat "src/tool_ca_embed.c" >> "$PREFIX/include/curl/ca_cert_embed.h"
         ;;
 
     libffi)
@@ -578,6 +573,14 @@ case "$LIB" in
                             -Db_staticpic=true build . 
         "${FLAGS_MESON[@]}" meson compile -C build
         "${FLAGS_MESON[@]}" meson install -C build
+        ;;
+
+    cacert)
+        download_file "https://curl.se/ca/cacert.pem" "cacert.pem"
+        ;;
+
+    bwrap)
+        download_file "https://gitlab.com/apparmor/apparmor/-/raw/8ed0bddcc9299b475356aacc4ee4fb523715649b/profiles/apparmor/profiles/extras/bwrap-userns-restrict" "bwrap-userns-restrict"
         ;;
 
     *)
