@@ -17,18 +17,19 @@ build_prefix="$PWD/deps/yawl"
 mkdir -p "$deps_builddir" "$deps_prefix"/{lib,include} "$build_prefix/"{lib,include}
 
 # Make some wrapper shims for the dependencies to compile happily
-export PATH="${deps_builddir}:${PWD}/build-aux:${PATH}"
+export PATH="${build_prefix}:${build_prefix}/zig:${PWD}/build-aux:${PATH}"
 AC_SUBST([PATH])
 
 AC_DEFUN([AC_PROG_ZIG], [
     AC_CHECK_PROG([ZIG], [zig], [zig])
     if test -z "$ZIG"; then
-        AC_MSG_ERROR([zig not found])
+        AC_MSG_NOTICE([Downloading zig])
+        sh build-aux/download-deps.sh zig "$build_prefix" "${build_prefix}/zig" || AC_MSG_ERROR([Failed to install zig])
     fi
 ])
 AC_PROG_ZIG
 
-install -Dm755 /dev/stdin "$deps_builddir"/zigcc <<EOF
+install -Dm755 /dev/stdin "$build_prefix"/zigcc <<EOF
 #!/usr/bin/env sh
 zig cc -target x86_64-linux-musl -Qunused-arguments "\$@"
 EOF
@@ -37,7 +38,7 @@ if test -z "$CC"; then
     AC_MSG_ERROR([zig cc not found])
 fi
 
-install -Dm755 /dev/stdin "$deps_builddir"/zigcpp <<EOF
+install -Dm755 /dev/stdin "$build_prefix"/zigcpp <<EOF
 #!/usr/bin/env sh
 zig c++ -target x86_64-linux-musl -Qunused-arguments "\$@"
 EOF
@@ -46,16 +47,16 @@ if test -z "$CXX"; then
     AC_MSG_ERROR([zig c++ not found])
 fi
 
-rm -f "$deps_builddir"/pkg-config # don't recurse infinitely :)
+rm -f "$build_prefix"/pkg-config # don't recurse infinitely :)
 
 PKG_PROG_PKG_CONFIG
 
-install -Dm755 /dev/stdin "$deps_builddir"/pkg-config <<EOF
+install -Dm755 /dev/stdin "$build_prefix"/pkg-config <<EOF
 #!/usr/bin/env sh
 $PKG_CONFIG --static "\$@"
 EOF
 
-export PKG_CONFIG="$deps_builddir/pkg-config"
+export PKG_CONFIG="$build_prefix"/pkg-config
 AC_SUBST([PKG_CONFIG])
 export PKG_CONFIG_PATH="$deps_prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
 AC_SUBST([PKG_CONFIG_PATH])
@@ -127,12 +128,12 @@ AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h linux/limit
 
 if test "x$ac_cv_header_linux_mman_h" != "xyes"
 then
-    AC_MSG_ERROR([Could not find the linux/mman.h header (MUSL_INCDIR=$MUSL_INCDIR is likely missing)])
+    AC_MSG_ERROR([Could not find the linux/mman.h header])
 fi
 
 if test "x$ac_cv_header_linux_limits_h" != "xyes"
 then
-    AC_MSG_ERROR([Could not find the linux/limits.h header (LIMITS_H=$LIMITS_H is likely missing)])
+    AC_MSG_ERROR([Could not find the linux/limits.h header])
 fi
 
 AS_IF([test -n "$CERT_BUNDLE"], [],
@@ -274,6 +275,7 @@ LIBNOTIFY_LIBS="-lnotify"
 JSON_GLIB_LIBS="-ljson-glib-1.0"
 
 ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
+
 export CPPFLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
 export CFLAGS="-Os -std=gnu23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing -flto=thin -ffat-lto-objects \
     -ffunction-sections -fdata-sections -fcf-protection=full -fstack-clash-protection -fstack-protector-all -Wa,--noexecstack -static -fPIE -static-pie \

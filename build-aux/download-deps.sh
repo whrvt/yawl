@@ -3,6 +3,7 @@
 
 set -e
 
+ZIG_VERSION="0.15.0-dev.64+2a4e06bcb"
 LIBUNISTRING_VERSION="1.3"
 LIBIDN2_VERSION="2.3.7"
 PSL_VERSION="0.21.5"
@@ -47,6 +48,15 @@ download_file() {
 JOBS=$(nproc)
 
 case "$LIB" in
+    zig)
+        [ -d "zig" ] && rm -rf zig
+        echo "Downloading zig-$ZIG_VERSION..."
+        download_file "https://ziglang.org/builds/zig-linux-x86_64-$ZIG_VERSION.tar.xz" "zig.tar.xz"
+        tar -xf zig.tar.xz
+        rm zig.tar.xz
+        mv zig-linux-x86_64-$ZIG_VERSION "zig/"
+        ;;
+
     libunistring)
         if [ ! -d "libunistring-$LIBUNISTRING_VERSION" ]; then
             echo "Downloading libunistring-$LIBUNISTRING_VERSION..."
