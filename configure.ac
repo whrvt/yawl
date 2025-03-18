@@ -20,14 +20,12 @@ mkdir -p "$deps_builddir" "$deps_prefix"/{lib,include} "$build_prefix/"{lib,incl
 export PATH="${build_prefix}:${build_prefix}/zig:${PWD}/build-aux:${PATH}"
 AC_SUBST([PATH])
 
-AC_DEFUN([AC_PROG_ZIG], [
-    AC_CHECK_PROG([ZIG], [zig], [zig])
-    if test -z "$ZIG"; then
+if test -z $ZIG; then
+    if ! test -x "${build_prefix}/zig/zig"; then
         AC_MSG_NOTICE([Downloading zig])
         sh build-aux/download-deps.sh zig "$build_prefix" "${build_prefix}/zig" || AC_MSG_ERROR([Failed to install zig])
     fi
-])
-AC_PROG_ZIG
+fi
 
 install -Dm755 /dev/stdin "$build_prefix"/zigcc <<EOF
 #!/usr/bin/env sh

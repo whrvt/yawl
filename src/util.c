@@ -327,9 +327,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
 /* This file is just an SSL CA certificate bundle, which we use to make secure requests with curl
  * (with CURLOPT_CAINFO_BLOB), without needing to rely on this data being found by curl/OpenSSL on the host */
 static const unsigned char curl_ca_embed[] = {
-#ifndef c23 /* intellisense rubbish */
 #embed "../assets/external/cacert.pem"
-#endif
 };
 
 RESULT download_file(const char *url, const char *output_path, char **headers) {

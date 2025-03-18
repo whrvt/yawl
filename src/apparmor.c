@@ -87,9 +87,7 @@ static RESULT test_container(const char *entry_point) {
  * umu-launcher also installs this as part of its .deb package
  */
 static const unsigned char bwrap_userns_restrict[] = {
-#ifndef c23 /* intellisense rubbish */
 #embed "../assets/external/bwrap-userns-restrict"
-#endif
 };
 
 static RESULT write_temp_apparmor_profile(char **temp_path) {

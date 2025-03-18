@@ -3,6 +3,7 @@
 *.la
 *.h.in*
 *.dirstamp
+.clangd
 confdefs.h
 .deps/
 .libs/
