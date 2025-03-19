@@ -57,7 +57,7 @@ jobs:
       shell: bash
       run: |
         pacman -Syu --noconfirm
-        pacman -S --noconfirm python musl meson git
+        pacman -S --noconfirm python meson git
     - name: Build
       shell: bash
       run: |
@@ -106,3 +106,4 @@ jobs:
         --clobber
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
