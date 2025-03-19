@@ -57,7 +57,7 @@ jobs:
       shell: bash
       run: |
         pacman -Syu --noconfirm
-        pacman -S --noconfirm python musl meson git
+        pacman -S --noconfirm cmake python musl meson git
     - name: Build
       shell: bash
       run: |
