@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include "config.h"
 #include "result.h"
 
 /* (private for now) Check if a new version is available and print information about it
@@ -41,24 +40,3 @@
  */
 RESULT handle_updates(int check_only, int do_update);
 
-#ifdef HAVE_RENAMEAT2
-#define _renameat2 renameat2
-#else
-#include <unistd.h>
-#include <syscall.h>
-#if defined(HAVE_RENAMEAT) && defined(SYS_renameat2)
-#define RENAME_NOREPLACE (1 << 0)
-#define RENAME_EXCHANGE (1 << 1)
-#define RENAME_WHITEOUT (1 << 2)
-/* This is required for musl, there's no wrapper for renameat2 like glibc */
-static inline int __renameat2(int oldfd, const char *old, int newfd, const char *new, unsigned flags) {
-    if (!flags)
-        return syscall(SYS_renameat, oldfd, old, newfd, new);
-    return syscall(SYS_renameat2, oldfd, old, newfd, new, flags);
-}
-
-#define _renameat2 __renameat2
-#else
-#define _renameat2
-#endif
-#endif

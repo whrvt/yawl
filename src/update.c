@@ -282,6 +282,26 @@ static RESULT copy_file(const char *source, const char *destination) {
     return RESULT_OK;
 }
 
+/* This is required for musl, there's no wrapper for renameat2 like glibc */
+#ifndef HAVE_RENAMEAT2
+#include <syscall.h>
+#define RENAME_NOREPLACE (1 << 0)
+#define RENAME_EXCHANGE (1 << 1)
+#define RENAME_WHITEOUT (1 << 2)
+#if defined(HAVE_RENAMEAT) && defined(SYS_renameat2)
+static inline int renameat2(int oldfd, const char *old, int newfd, const char *new, unsigned flags) {
+    if (!flags)
+        return syscall(SYS_renameat, oldfd, old, newfd, new);
+    return syscall(SYS_renameat2, oldfd, old, newfd, new, flags);
+}
+#else
+static inline int renameat2(int, const char *, int, const char *, unsigned) {
+    errno = ENOSYS;
+    return -1;
+}
+#endif
+#endif
+
 /* Replace the current binary with the new one */
 static RESULT replace_binary(const char *new_binary, const char *current_binary) {
     struct stat src_stat, dst_stat;
@@ -291,14 +311,11 @@ static RESULT replace_binary(const char *new_binary, const char *current_binary)
         return result_from_errno();
 
     if (src_stat.st_dev == dst_stat.st_dev) {
-#ifdef _renameat2
-        int result;
-        result = _renameat2(AT_FDCWD, new_binary, AT_FDCWD, current_binary, RENAME_EXCHANGE);
-        if (result == 0)
+        if (!renameat2(AT_FDCWD, new_binary, AT_FDCWD, current_binary, RENAME_EXCHANGE))
             return RESULT_OK;
         if (errno != ENOSYS && errno != EINVAL && errno != ENOTTY)
             LOG_DEBUG_RESULT(result_from_errno(), "renameat2 failed");
-#endif
+
         /* Fallback method: Create a backup and use rename */
         char *backup_file = NULL;
         append_sep(backup_file, "", current_binary, BACKUP_SUFFIX);
@@ -466,12 +483,14 @@ static RESULT perform_update(void) {
 
     LOG_INFO("Installing update...");
     result = replace_binary(temp_binary, self_path);
-    if (SUCCEEDED(result))
-        result = MAKE_RESULT(SEV_INFO, CAT_RUNTIME, E_UPDATE_PERFORMED);
 
 cleanup_update:
+    if (SUCCEEDED(result)) {
+        unlink(temp_binary); /* Keep the temp_binary around unless we succeeded */
+        result = MAKE_RESULT(SEV_INFO, CAT_RUNTIME, E_UPDATE_PERFORMED);
+    }
+
     unlink(release_file);
-    unlink(temp_binary);
     free(release_file);
     free(self_path);
     free(download_dir);

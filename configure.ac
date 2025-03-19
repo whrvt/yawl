@@ -100,10 +100,11 @@ AC_SUBST([MAKEFLAGS])
 
 export CC="$CC"
 export CXX="$CXX"
+export LD="$CC"
 shared_includes="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$deps_prefix/include" # It doesn't even compile without LTO, I tried...
 shared_flags="-Os -march=x86_64 -mtune=x86_64 -fwrapv -fno-strict-aliasing -flto=thin -ffat-lto-objects \
     -ffunction-sections -fdata-sections -pthread -fcf-protection=full -fstack-clash-protection -fstack-protector-all -Wa,--noexecstack \
-    -static -fPIE -static-pie -static-libsan -L$deps_prefix/lib -Wl,--gc-sections,-s -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now \
+    -static -fPIE -static-pie -static-libsan -L$deps_prefix/lib -Wl,--gc-sections -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now \
     -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
 export CPPFLAGS="$shared_includes"
 export CFLAGS="$shared_includes $shared_flags"
@@ -114,6 +115,7 @@ export AR="$AR"
 
 AC_SUBST([CC])
 AC_SUBST([CXX])
+AC_SUBST([LD])
 AC_SUBST([CPPFLAGS])
 AC_SUBST([CFLAGS])
 AC_SUBST([CXXFLAGS])
@@ -133,6 +135,25 @@ if test "x$ac_cv_header_linux_limits_h" != "xyes"
 then
     AC_MSG_ERROR([Could not find the linux/limits.h header])
 fi
+
+# Download and build mimalloc (to replace the slow musl malloc)
+if ! test -f "$build_prefix/lib/mimalloc.o"; then
+    AC_MSG_NOTICE([Building mimalloc])
+    sh build-aux/download-deps.sh mimalloc "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build mimalloc])
+    cp $deps_prefix/lib/*malloc* $build_prefix/lib/
+    cp -r $deps_prefix/include/*malloc* $build_prefix/include/
+fi
+
+export CPPFLAGS="$CPPFLAGS -DHAVE_FREE_POSIX=1 -Drpl_free=free"
+export CFLAGS="$CFLAGS -DHAVE_FREE_POSIX=1 -Drpl_free=free"
+export CXXFLAGS="$CXXFLAGS -DHAVE_FREE_POSIX=1 -Drpl_free=free"
+export LDFLAGS="$LDFLAGS $build_prefix/lib/mimalloc.o"
+export LD="$LD $build_prefix/lib/mimalloc.o"
+AC_SUBST([CPPFLAGS])
+AC_SUBST([CFLAGS])
+AC_SUBST([CXXFLAGS])
+AC_SUBST([LDFLAGS])
+AC_SUBST([LD])
 
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$build_prefix/lib/libunistring.a"; then
@@ -238,8 +259,6 @@ if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/lib
     cp -r $deps_prefix/include/json-glib-1.0/ $build_prefix/include/
 fi
 
-find "$build_prefix"/ -name '*.a' -execdir "$STRIP" --strip-unneeded '{''}' '+'
-
 # Now download the CA certificate bundle to embed and use with curl
 if ! test -f "$PWD/assets/external/cacert.pem"; then
     AC_MSG_NOTICE([Downloading CA certificate bundle for curl])
@@ -259,12 +278,13 @@ LIBARCHIVE_CPPFLAGS="-DLIBARCHIVE_STATIC"
 
 NON_GLIB_CPPFLAGS="$LIBARCHIVE_CPPFLAGS $CURL_CPPFLAGS -I$build_prefix/include"
 
-COMMON_DEP_LIBS="-lidn2 -lunistring -lpsl -lz -llzma -lzstd -Wl,--no-whole-archive"
+COMMON_DEP_LIBS="-lidn2 -lpsl -lunistring -lz -llzma -lzstd"
 CURL_LIBS="-lcurl"
 LIBARCHIVE_LIBS="-larchive"
 OPENSSL_LIBS="-lssl -lcrypto"
 
-NON_GLIB_LIBS="-L$build_prefix/lib $CURL_LIBS $LIBARCHIVE_LIBS $OPENSSL_LIBS $COMMON_DEP_LIBS"
+NON_GLIB_LIBS="$build_prefix/lib/mimalloc.o -L$build_prefix/lib $CURL_LIBS $LIBARCHIVE_LIBS $OPENSSL_LIBS $COMMON_DEP_LIBS"
+
 GLIB_CPPFLAGS="-I$build_prefix/include/glib-2.0 -DPCRE2_STATIC"
 GDK_PIXBUF_CPPFLAGS="-I$build_prefix/include/gdk-pixbuf-2.0"
 JSON_GLIB_CPPFLAGS="-I$build_prefix/include/json-glib-1.0"
@@ -278,25 +298,27 @@ JSON_GLIB_LIBS="-ljson-glib-1.0"
 
 ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
 
-export CPPFLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-export CFLAGS="-Os -std=gnu23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing -flto=thin -ffat-lto-objects \
-    -ffunction-sections -fdata-sections -fcf-protection=full -fstack-clash-protection -fstack-protector-all -Wa,--noexecstack -static -fPIE -static-pie \
-    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next \
-    -Wl,--gc-sections,-s -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
-export LDFLAGS="$CFLAGS"
-
-AC_SUBST([NON_GLIB_LIBS])
-AC_SUBST([ALL_GLIB_LIBS])
+# Shared flags/libraries for all targets
+CPPFLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
+CFLAGS="-std=gnu23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing \
+    -static -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection -fstack-protector-all \
+    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wa,--noexecstack \
+    -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+LDFLAGS="$CFLAGS"
 
 AC_SUBST([CPPFLAGS])
 AC_SUBST([CFLAGS])
 AC_SUBST([LDFLAGS])
 
-export PKG_CONFIG=""
+AC_SUBST([NON_GLIB_LIBS])
+AC_SUBST([ALL_GLIB_LIBS])
+
+# Don't need these anymore, we manually specify libs/flags
+PKG_CONFIG=""
 AC_SUBST([PKG_CONFIG])
-export PKG_CONFIG_PATH=""
+PKG_CONFIG_PATH=""
 AC_SUBST([PKG_CONFIG_PATH])
-export PKG_CONFIG_LIBDIR=""
+PKG_CONFIG_LIBDIR=""
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
 AC_CHECK_FUNCS(renameat renameat2)

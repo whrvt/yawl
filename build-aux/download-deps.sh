@@ -4,6 +4,7 @@
 set -e
 
 ZIG_VERSION="0.15.0-dev.64+2a4e06bcb"
+MIMALLOC_VERSION="3.0.2-beta"
 LIBUNISTRING_VERSION="1.3"
 LIBIDN2_VERSION="2.3.7"
 PSL_VERSION="0.21.5"
@@ -57,6 +58,31 @@ case "$LIB" in
         mv zig-linux-x86_64-$ZIG_VERSION "zig/"
         ;;
 
+    mimalloc)
+        if [ ! -d "mimalloc-$MIMALLOC_VERSION" ]; then
+            echo "Downloading mimalloc-$MIMALLOC_VERSION..."
+            download_file "https://github.com/microsoft/mimalloc/archive/refs/tags/v$MIMALLOC_VERSION.tar.gz" "mimalloc.tar.gz"
+            tar -xf mimalloc.tar.gz
+            rm mimalloc.tar.gz
+        fi
+
+        cd "mimalloc-$MIMALLOC_VERSION"
+        mkdir -p out/release
+        cd out/release
+        cmake \
+            -DCMAKE_C_FLAGS="$CFLAGS -Wno-date-time" \
+            -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DMI_OPT_ARCH=OFF \
+            -DMI_BUILD_SHARED=OFF \
+            -DMI_BUILD_TESTS=OFF \
+            -DMI_INSTALL_TOPLEVEL=ON \
+            -DMI_LIBC_MUSL=ON \
+            -DMI_BUILD_STATIC=OFF \
+            -DMI_BUILD_OBJECT=ON ../.. && \
+        make -j"$JOBS" && \
+        make install || exit 1
+        ;;
+
     libunistring)
         if [ ! -d "libunistring-$LIBUNISTRING_VERSION" ]; then
             echo "Downloading libunistring-$LIBUNISTRING_VERSION..."
@@ -78,8 +104,8 @@ case "$LIB" in
             CXXFLAGS="$CXXFLAGS" \
             LDFLAGS="$LDFLAGS"
 
-        make -j"$JOBS"
-        make install
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     libidn2)
@@ -105,8 +131,8 @@ case "$LIB" in
             CXXFLAGS="$CXXFLAGS" \
             LDFLAGS="-lunistring $LDFLAGS"
 
-        make -j"$JOBS"
-        make install
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     libpsl)
@@ -130,8 +156,8 @@ case "$LIB" in
             CXXFLAGS="$CXXFLAGS" \
             LDFLAGS="-lunistring -lidn2 $LDFLAGS"
 
-        make -j"$JOBS"
-        make install
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     libz)
@@ -155,8 +181,8 @@ case "$LIB" in
             --static \
             --zlib-compat
 
-        make -j"$JOBS"
-        make install
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     xz)
@@ -189,8 +215,8 @@ case "$LIB" in
             CXXFLAGS="$CXXFLAGS" \
             LDFLAGS="$LDFLAGS"
 
-        make -j"$JOBS"
-        make install
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     zstd)
@@ -205,8 +231,7 @@ case "$LIB" in
 
         FLAGS_ZST=("env"
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -DZSTD_MULTITHREAD -DZSTD_HAVE_WEAK_SYMBOLS=0 -DZSTD_TRACE=0"
-            "CFLAGS=$CFLAGS $LDFLAGS"
-            "CXXFLAGS=$CFLAGS" "LDFLAGS=$LDFLAGS"
+            "CFLAGS=$CFLAGS" "CXXFLAGS=$CFLAGS" "LDFLAGS=$LDFLAGS"
         )
 
         "${FLAGS_ZST[@]}" make -j"$JOBS" libzstd.a && "${FLAGS_ZST[@]}" make -j"$JOBS" libzstd.pc && \
@@ -276,11 +301,8 @@ case "$LIB" in
             no-docs \
             enable-ec_nistp_64_gcc_128
 
-        make -j"$JOBS"
-
-        # OpenSSL's build system has an install_sw target to install only the
-        # libraries and not the documentation or other components
-        make install_sw
+        make -j"$JOBS" && \
+        make install_sw || exit 1
         ;;
 
     libarchive)
@@ -320,8 +342,8 @@ case "$LIB" in
             CXXFLAGS="$CXXFLAGS" \
             LDFLAGS="$LDFLAGS"
 
-        make -j"$JOBS"
-        make install
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     curl)
@@ -381,8 +403,8 @@ case "$LIB" in
             LIBS="-lunistring -lidn2 -lpsl -lz -lssl -lcrypto" \
             LDFLAGS="$LDFLAGS"
 
-        make -j"$JOBS"
-        make install
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     libffi)
@@ -408,8 +430,8 @@ case "$LIB" in
             CXXFLAGS="$CXXFLAGS" \
             LDFLAGS="$LDFLAGS"
 
-        make -j"$JOBS"
-        make install
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     gdk-pixbuf)
@@ -537,8 +559,8 @@ case "$LIB" in
                             -Ddefault_library=static \
                             -Ddefault_both_libraries=static \
                             -Db_staticpic=true build . 
-        "${FLAGS_MESON[@]}" meson compile -C build
-        "${FLAGS_MESON[@]}" meson install -C build
+        "${FLAGS_MESON[@]}" meson compile -C build && \
+        "${FLAGS_MESON[@]}" meson install -C build || exit 1
         ;;
 
     json-glib)
@@ -572,16 +594,16 @@ case "$LIB" in
                             -Ddefault_library=static \
                             -Ddefault_both_libraries=static \
                             -Db_staticpic=true build . 
-        "${FLAGS_MESON[@]}" meson compile -C build
-        "${FLAGS_MESON[@]}" meson install -C build
+        "${FLAGS_MESON[@]}" meson compile -C build && \
+        "${FLAGS_MESON[@]}" meson install -C build || exit 1
         ;;
 
     cacert)
-        download_file "https://curl.se/ca/cacert.pem" "cacert.pem"
+        download_file "https://curl.se/ca/cacert.pem" "cacert.pem" || exit 1
         ;;
 
     bwrap)
-        download_file "https://gitlab.com/apparmor/apparmor/-/raw/8ed0bddcc9299b475356aacc4ee4fb523715649b/profiles/apparmor/profiles/extras/bwrap-userns-restrict" "bwrap-userns-restrict"
+        download_file "https://gitlab.com/apparmor/apparmor/-/raw/8ed0bddcc9299b475356aacc4ee4fb523715649b/profiles/apparmor/profiles/extras/bwrap-userns-restrict" "bwrap-userns-restrict" || exit 1
         ;;
 
     *)

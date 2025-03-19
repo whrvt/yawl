@@ -18,10 +18,11 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <stdio.h>
+
 #include "apparmor.h"
 #include "log.h"
 #include "util.h"
-#include <stdio.h>
 
 #define APPARMOR_DIR "/etc/apparmor.d"
 #define APPARMOR_PROFILE_NAME "bwrap-userns-restrict-" PROG_NAME

@@ -19,12 +19,12 @@
  */
 
 #include <ctype.h>
+#include <errno.h>
 #include <wordexp.h>
 
 #include "archive.h"
 #include "archive_entry.h"
 #include "curl/curl.h"
-#include "errno.h"
 #include "log.h"
 #include "openssl/evp.h"
 #include "util.h"
