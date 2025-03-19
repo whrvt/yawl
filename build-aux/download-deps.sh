@@ -433,6 +433,7 @@ case "$LIB" in
         "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
+                            -Ddebug=false \
                             -Dpng=disabled \
                             -Dtiff=disabled \
                             -Djpeg=disabled \

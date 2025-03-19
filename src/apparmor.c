@@ -21,6 +21,7 @@
 #include "apparmor.h"
 #include "log.h"
 #include "util.h"
+#include <stdio.h>
 
 #define APPARMOR_DIR "/etc/apparmor.d"
 #define APPARMOR_PROFILE_NAME "bwrap-userns-restrict-" PROG_NAME

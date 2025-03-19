@@ -20,8 +20,9 @@
 
 #include "config.h"
 
+#include <errno.h>
 #include <getopt.h>
-#include <stdint.h>
+#include <stdio.h>
 #include <sys/prctl.h>
 
 #include "apparmor.h"

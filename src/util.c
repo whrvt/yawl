@@ -18,11 +18,13 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <ctype.h>
 #include <wordexp.h>
 
 #include "archive.h"
 #include "archive_entry.h"
 #include "curl/curl.h"
+#include "errno.h"
 #include "log.h"
 #include "openssl/evp.h"
 #include "util.h"

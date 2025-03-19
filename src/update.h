@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "config.h"
 #include "result.h"
 
 /* (private for now) Check if a new version is available and print information about it
@@ -43,6 +44,7 @@ RESULT handle_updates(int check_only, int do_update);
 #ifdef HAVE_RENAMEAT2
 #define _renameat2 renameat2
 #else
+#include <unistd.h>
 #include <syscall.h>
 #if defined(HAVE_RENAMEAT) && defined(SYS_renameat2)
 #define RENAME_NOREPLACE (1 << 0)
