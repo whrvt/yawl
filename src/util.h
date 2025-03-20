@@ -50,7 +50,8 @@ void _append_sep_impl(char **result_ptr, const char *separator, int num_strings,
 #define COUNT_JOIN_ARGS(...) (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *))
 
 /* Join strings with a `sep` separator into the first argument (`result`) */
-#define append_sep(result, sep, ...) _append_sep_impl(&(result), sep, COUNT_JOIN_ARGS(__VA_ARGS__) __VA_OPT__(,) __VA_ARGS__)
+#define append_sep(result, sep, ...)                                                                                   \
+    _append_sep_impl(&(result), sep, COUNT_JOIN_ARGS(__VA_ARGS__) __VA_OPT__(, ) __VA_ARGS__)
 
 /* Join paths with a `/` separator into the first argument (`result`) */
 #define join_paths(result, ...) append_sep(result, "/", __VA_ARGS__)
@@ -75,7 +76,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
 
 /* Expands shell paths like ~ to their full equivalents (using wordexp)
  * Returns a newly allocated string that must be freed by the caller
- * Returns NULL on failure */
+ * Returns nullptr on failure */
 char *expand_path(const char *path);
 
 /* A helper to extract an archive from `archive_path` to `extract_path` with libarchive
@@ -84,7 +85,7 @@ RESULT extract_archive(const char *archive_path, const char *extract_path);
 
 /* A helper to download a file from `url` to `output_path` with libcurl
  * Returns RESULT_OK on success, error RESULT on failure
- * headers: NULL-terminated array of strings for HTTP headers (can be NULL)
+ * headers: nullptr-terminated array of strings for HTTP headers (can be nullptr)
  */
 RESULT download_file(const char *url, const char *output_path, char **headers);
 
@@ -92,7 +93,7 @@ RESULT download_file(const char *url, const char *output_path, char **headers);
 static inline char *get_base_name(const char *path) {
     char *path_copy = strdup(path);
     if (!path_copy)
-        return NULL;
+        return nullptr;
 
     char *last_slash = strrchr(path_copy, '/');
     char *base_name = strdup(last_slash ? last_slash + 1 : path_copy);

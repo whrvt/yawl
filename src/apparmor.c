@@ -30,10 +30,10 @@
 
 /* Test if the container works by running a simple command inside it */
 static RESULT test_container(const char *entry_point) {
-    char *test_cmd = NULL;
-    char *stdout_file = NULL;
-    char *stderr_file = NULL;
-    FILE *stderr_fp = NULL;
+    char *test_cmd = nullptr;
+    char *stdout_file = nullptr;
+    char *stderr_file = nullptr;
+    FILE *stderr_fp = nullptr;
     int ret = 0;
     int apparmor_issue = 0;
     char error_buf[BUFFER_SIZE] = {0};
@@ -88,12 +88,12 @@ static RESULT test_container(const char *entry_point) {
  * Allows pressure-vessel to run with AppArmor enabled, i.e. on Ubuntu 24+ or Debian
  * umu-launcher also installs this as part of its .deb package
  */
-static const unsigned char bwrap_userns_restrict[] = {
+static constexpr const unsigned char bwrap_userns_restrict[] = {
 #embed "../assets/external/bwrap-userns-restrict"
 };
 
 static RESULT write_temp_apparmor_profile(char **temp_path) {
-    FILE *fp = NULL;
+    FILE *fp = nullptr;
 
     /* Create a temporary file in the yawl directory */
     join_paths(*temp_path, g_yawl_dir, APPARMOR_PROFILE_NAME ".tmp");
@@ -122,8 +122,8 @@ static RESULT write_temp_apparmor_profile(char **temp_path) {
 /* Install the AppArmor profile using pkexec */
 static RESULT install_apparmor_profile(void) {
     struct stat st;
-    char *temp_profile_path = NULL;
-    char *install_cmd = NULL;
+    char *temp_profile_path = nullptr;
+    char *install_cmd = nullptr;
     int ret = 0;
     RESULT result = RESULT_OK;
 

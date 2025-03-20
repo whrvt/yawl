@@ -34,7 +34,7 @@ void _append_sep_impl(char **result_ptr, const char *separator, int num_strings,
     assert(num_strings >= 0);
 
     char *old_result = *result_ptr;
-    size_t old_len = (old_result != NULL) ? strlen(old_result) : 0;
+    size_t old_len = (old_result != nullptr) ? strlen(old_result) : 0;
     size_t sep_len = strlen(separator);
     size_t total_length = old_len;
 
@@ -55,7 +55,7 @@ void _append_sep_impl(char **result_ptr, const char *separator, int num_strings,
     va_end(args_copy);
 
     char *new_result = realloc(old_result, total_length + 1);
-    assert(new_result != NULL); /* don't fail malloc */
+    assert(new_result != nullptr); /* don't fail malloc */
 
     /* early return for the degenerate case (no separator or strings to add) */
     if (old_len == 0 && num_strings == 0) {
@@ -87,14 +87,14 @@ void _append_sep_impl(char **result_ptr, const char *separator, int num_strings,
 
 char *expand_path(const char *path) {
     if (!path)
-        return NULL;
+        return nullptr;
 
     /* Fast path for paths that don't need expansion */
     if (!strchr(path, '~') && !strchr(path, '$'))
         return strdup(path);
 
     wordexp_t p;
-    char *result = NULL;
+    char *result = nullptr;
 
     /* Use wordexp to handle path expansion like the shell would */
     int ret = wordexp(path, &p, WRDE_NOCMD);
@@ -179,11 +179,11 @@ RESULT remove_dir(const char *path) {
 
     RESULT result = RESULT_OK;
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
+    while ((entry = readdir(dir)) != nullptr) {
         if (STRING_EQUALS(entry->d_name, ".") || STRING_EQUALS(entry->d_name, ".."))
             continue;
 
-        char *full_path = NULL;
+        char *full_path = nullptr;
         join_paths(full_path, path, entry->d_name);
 
         struct stat st;
@@ -241,7 +241,7 @@ RESULT calculate_sha256(const char *file_path, char hash_str[static 65]) {
         return result;
     }
 
-    if (EVP_DigestInit_ex(mdctx, md, NULL) != 1) {
+    if (EVP_DigestInit_ex(mdctx, md, nullptr) != 1) {
         RESULT result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_UNKNOWN);
         LOG_RESULT(LOG_ERROR, result, "Failed to initialize hash context");
         EVP_MD_CTX_free(mdctx);
@@ -286,15 +286,15 @@ RESULT calculate_sha256(const char *file_path, char hash_str[static 65]) {
 }
 
 RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, char hash_str[static 65]) {
-    char *local_sums_path = NULL;
-    FILE *fp = NULL;
+    char *local_sums_path = nullptr;
+    FILE *fp = nullptr;
     char line[200];
     int found = 0;
     RESULT result = RESULT_OK;
 
     join_paths(local_sums_path, g_yawl_dir, "SHA256SUMS");
 
-    result = download_file(hash_url, local_sums_path, NULL);
+    result = download_file(hash_url, local_sums_path, nullptr);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to download hash file");
         free(local_sums_path);
@@ -341,7 +341,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
 
 /* This file is just an SSL CA certificate bundle, which we use to make secure requests with curl
  * (with CURLOPT_CAINFO_BLOB), without needing to rely on this data being found by curl/OpenSSL on the host */
-static const unsigned char curl_ca_embed[] = {
+static constexpr const unsigned char curl_ca_embed[] = {
 #embed "../assets/external/cacert.pem"
 };
 
@@ -365,7 +365,7 @@ RESULT download_file(const char *url, const char *output_path, char **headers) {
     }
 
     /* Add optional headers to the req */
-    struct curl_slist *header_list = NULL;
+    struct curl_slist *header_list = nullptr;
     if (headers) {
         for (char **header = headers; *header; header++) {
             header_list = curl_slist_append(header_list, *header);
@@ -377,7 +377,7 @@ RESULT download_file(const char *url, const char *output_path, char **headers) {
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullptr);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
@@ -385,7 +385,7 @@ RESULT download_file(const char *url, const char *output_path, char **headers) {
     /* Copied from curl's `src/tool_operate.c`, use the embedded CA certificate data */
     struct curl_blob blob;
     blob.data = (void *)curl_ca_embed;
-    blob.len = strlen((const char *)curl_ca_embed);
+    blob.len = sizeof(curl_ca_embed);
     blob.flags = CURL_BLOB_NOCOPY;
     curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &blob);
 
@@ -443,7 +443,7 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
         goto cleanup;
     }
 
-    char *old_cwd = getcwd(NULL, 0);
+    char *old_cwd = getcwd(nullptr, 0);
     if (!old_cwd) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to get current working directory");
@@ -496,7 +496,7 @@ RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
         return MAKE_RESULT(SEV_INFO, CAT_SYSTEM, E_NOT_FOUND);
 
     char *copy = strdup(yawl_verbs);
-    char *new_verbs = NULL;
+    char *new_verbs = nullptr;
     char *token, *saveptr;
     token = strtok_r(copy, ";", &saveptr);
 
@@ -522,7 +522,7 @@ RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
             append_sep(new_verbs, ";", token);
         }
 
-        token = strtok_r(NULL, ";", &saveptr);
+        token = strtok_r(nullptr, ";", &saveptr);
     }
 
     free(copy);

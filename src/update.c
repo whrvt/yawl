@@ -34,7 +34,7 @@
 #include "json-glib/json-glib.h"
 
 #define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/" PROG_NAME "/releases/latest"
-#define GITHUB_DOWNLOAD_URL_FORMAT PACKAGE_URL "/releases/download/%s/" PROG_NAME
+#define GITHUB_RELEASES_PAGE_URL PACKAGE_URL "/releases/download"
 #define UPDATE_USER_AGENT PROG_NAME "-updater/" VERSION
 
 /* temp files */
@@ -62,7 +62,7 @@ static RESULT download_github_release_info(const char *output_path) {
     char user_agent[100];
     snprintf(user_agent, sizeof(user_agent), "User-Agent: %s", UPDATE_USER_AGENT);
 
-    char *headers[] = {"Accept: application/vnd.github+json", "X-GitHub-Api-Version: 2022-11-28", user_agent, NULL};
+    char *headers[] = {"Accept: application/vnd.github+json", "X-GitHub-Api-Version: 2022-11-28", user_agent, nullptr};
 
     return download_file(GITHUB_API_RELEASES_URL, output_path, headers);
 }
@@ -72,11 +72,11 @@ static RESULT parse_release_info(const char *json_path, char **tag_name, char **
     if (!json_path || !tag_name || !download_url)
         return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_INVALID_ARG);
 
-    *tag_name = NULL;
-    *download_url = NULL;
+    *tag_name = nullptr;
+    *download_url = nullptr;
 
     JsonParser *parser = json_parser_new();
-    GError *error = NULL;
+    GError *error = nullptr;
 
     /* Load and parse the JSON file */
     json_parser_load_from_file(parser, json_path, &error);
@@ -104,20 +104,15 @@ static RESULT parse_release_info(const char *json_path, char **tag_name, char **
         return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_NOT_FOUND);
     }
 
-    /* Format the download URL */
-    if (*tag_name) {
-        *download_url = malloc(strlen(GITHUB_DOWNLOAD_URL_FORMAT) + strlen(*tag_name) + 1);
-        if (*download_url) {
-            sprintf(*download_url, GITHUB_DOWNLOAD_URL_FORMAT, *tag_name);
-        } else {
-            free(*tag_name);
-            *tag_name = NULL;
-            g_object_unref(parser);
-            return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_OUT_OF_MEMORY);
-        }
-    }
-
     g_object_unref(parser);
+
+    /* Format the download URL */
+    if (*tag_name)
+        join_paths(*download_url, GITHUB_RELEASES_PAGE_URL, *tag_name, PROG_NAME);
+
+    if (!*download_url)
+        return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_OUT_OF_MEMORY);
+
     return RESULT_OK;
 }
 
@@ -145,11 +140,11 @@ static RESULT make_executable(const char *file_path) {
 
 /* TODO: refactor the file replacement/copying/backup functions below, could be made a lot clearer and simpler */
 static RESULT copy_file_raw(const char *source, const char *destination, int use_temp) {
-    FILE *src = NULL, *dst = NULL;
+    FILE *src = nullptr, *dst = nullptr;
     char buffer[BUFFER_SIZE];
     size_t bytes_read;
     RESULT result = RESULT_OK;
-    char *actual_dest = NULL;
+    char *actual_dest = nullptr;
 
     src = fopen(source, "rb");
     if (!src)
@@ -231,7 +226,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
 static RESULT copy_file(const char *source, const char *destination) {
     RESULT result = RESULT_OK;
 
-    char *backup_file = NULL;
+    char *backup_file = nullptr;
     join_paths(backup_file, g_yawl_dir, PROG_NAME BACKUP_SUFFIX);
 
     if (access(destination, F_OK) == 0) {
@@ -317,7 +312,7 @@ static RESULT replace_binary(const char *new_binary, const char *current_binary)
             LOG_DEBUG_RESULT(result_from_errno(), "renameat2 failed");
 
         /* Fallback method: Create a backup and use rename */
-        char *backup_file = NULL;
+        char *backup_file = nullptr;
         append_sep(backup_file, "", current_binary, BACKUP_SUFFIX);
 
         /* Step 1: Backup the current binary */
@@ -354,9 +349,9 @@ static RESULT replace_binary(const char *new_binary, const char *current_binary)
 }
 
 static RESULT check_for_updates(void) {
-    char *release_file = NULL;
-    char *tag_name = NULL;
-    char *download_url = NULL;
+    char *release_file = nullptr;
+    char *tag_name = nullptr;
+    char *download_url = nullptr;
     RESULT result;
 
     LOG_INFO("Checking for updates...");
@@ -408,11 +403,11 @@ static RESULT check_for_updates(void) {
 }
 
 static RESULT perform_update(void) {
-    char *release_file = NULL;
+    char *release_file = nullptr;
     char download_url[1024] = {0};
-    char *temp_binary = NULL;
-    char *self_path = NULL;
-    char *download_dir = NULL;
+    char *temp_binary = nullptr;
+    char *self_path = nullptr;
+    char *download_dir = nullptr;
     RESULT result;
 
     /* Get the download URL from the saved file */
@@ -434,7 +429,7 @@ static RESULT perform_update(void) {
     fclose(fp);
 
     /* Get current executable path */
-    self_path = realpath("/proc/self/exe", NULL);
+    self_path = realpath("/proc/self/exe", nullptr);
     if (!self_path) {
         free(release_file);
         return result_from_errno();
@@ -454,12 +449,12 @@ static RESULT perform_update(void) {
         } else {
             /* Not writable, fallback to yawl_dir */
             free(download_dir);
-            download_dir = NULL;
+            download_dir = nullptr;
         }
     } else {
         /* Shouldn't happen with realpath, but just in case */
         free(download_dir);
-        download_dir = NULL;
+        download_dir = nullptr;
     }
 
     /* Use yawl_dir if exec dir is unwritable */
@@ -469,7 +464,7 @@ static RESULT perform_update(void) {
     }
 
     LOG_INFO("Downloading update from %s", download_url, temp_binary);
-    result = download_file(download_url, temp_binary, NULL);
+    result = download_file(download_url, temp_binary, nullptr);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to download update");
         goto cleanup_update;

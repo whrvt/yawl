@@ -39,4 +39,3 @@
  * Returns RESULT_OK on success, error RESULT on failure
  */
 RESULT handle_updates(int check_only, int do_update);
-

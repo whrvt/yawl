@@ -41,7 +41,7 @@
 #include "log.h"
 #include "util.h"
 
-static FILE *log_file = NULL;
+static FILE *log_file = nullptr;
 static log_level_t current_log_level = LOG_INFO;
 static int terminal_output = 0;
 static gboolean notify_initialized = FALSE;
@@ -54,8 +54,8 @@ static gboolean notify_initialized = FALSE;
 #define COLOR_GREEN "\033[32m"
 #define COLOR_BLUE "\033[34m"
 
-static const char *level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG"};
-static const char *level_colors[] = {"\0", COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_BLUE};
+static const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG"};
+static const char *const level_colors[] = {"\0", COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_BLUE};
 
 /* Parse log level from string */
 static log_level_t parse_log_level(const char *level_str) {
@@ -78,7 +78,7 @@ static log_level_t parse_log_level(const char *level_str) {
 }
 
 RESULT log_init(void) {
-    char *log_file_path = NULL;
+    char *log_file_path = nullptr;
     terminal_output = isatty(STDOUT_FILENO);
 
     const char *log_level_env = getenv("YAWL_LOG_LEVEL");
@@ -108,7 +108,7 @@ RESULT log_init(void) {
             return result;
         }
 
-        time_t now = time(NULL);
+        time_t now = time(nullptr);
         char time_str[64];
         strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
@@ -123,7 +123,7 @@ RESULT log_init(void) {
 void log_cleanup(void) {
     if (log_file) {
         /* Write session end marker */
-        time_t now = time(NULL);
+        time_t now = time(nullptr);
         char time_str[64];
         strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
 
@@ -131,7 +131,7 @@ void log_cleanup(void) {
         fflush(log_file);
 
         fclose(log_file);
-        log_file = NULL;
+        log_file = nullptr;
     }
 }
 
@@ -161,7 +161,7 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         notify_notification_set_urgency(notif, NOTIFY_URGENCY_CRITICAL);
         notify_notification_set_timeout(notif, 30000); /* 30 seconds */
 
-        GError *error = NULL;
+        GError *error = nullptr;
         if (!notify_notification_show(notif, &error)) {
             /* failed, whatever? */
         }
@@ -171,7 +171,7 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
     }
 
     char timestamp[32];
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
 
     /* Create timestamp */
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
@@ -224,9 +224,9 @@ void _log_result(log_level_t level, const char *file, int line, RESULT result, c
         _log_message(level, file, line, "Result: %s (0x%08X)", result_str, (unsigned)result);
 
     if (current_log_level == LOG_DEBUG) {
-        int severity = RESULT_SEVERITY(result);
-        int category = RESULT_CATEGORY(result);
-        int code = RESULT_CODE(result);
+        const int severity = RESULT_SEVERITY(result);
+        const int category = RESULT_CATEGORY(result);
+        const int code = RESULT_CODE(result);
 
         _log_message(LOG_DEBUG, file, line, "  Details: Severity=%d, Category=%d, Code=0x%04X", severity, category,
                      code);

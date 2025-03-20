@@ -51,9 +51,9 @@ struct options {
     int check;          /* 1 = check for updates */
     int update;         /* 1 = check for and apply updates */
     char *exec_path;    /* Path to the executable to run (default: /usr/bin/wine) */
-    char *make_wrapper; /* Name of the wrapper to create (NULL = don't create) */
-    char *config;       /* Name of the config to use (NULL = use argv[0] or default) */
-    char *wineserver;   /* Path to the wineserver binary (NULL = don't create wineserver wrapper) */
+    char *make_wrapper; /* Name of the wrapper to create (nullptr = don't create) */
+    char *config;       /* Name of the config to use (nullptr = use argv[0] or default) */
+    char *wineserver;   /* Path to the wineserver binary (nullptr = don't create wineserver wrapper) */
 };
 
 static void print_usage(void) {
@@ -145,9 +145,9 @@ static RESULT parse_env_options(struct options *opts) {
     opts->check = 0;
     opts->update = 0;
     opts->exec_path = strdup(DEFAULT_EXEC_PATH);
-    opts->make_wrapper = NULL;
-    opts->config = NULL;
-    opts->wineserver = NULL;
+    opts->make_wrapper = nullptr;
+    opts->config = nullptr;
+    opts->wineserver = nullptr;
 
     const char *verbs = getenv("YAWL_VERBS");
     if (!verbs)
@@ -170,7 +170,7 @@ static RESULT parse_env_options(struct options *opts) {
             LOG_DEBUG("Returning early, got help token");
             break;
         }
-        token = strtok(NULL, ";");
+        token = strtok(nullptr, ";");
     }
 
     free(verbs_copy);
@@ -178,7 +178,7 @@ static RESULT parse_env_options(struct options *opts) {
 }
 
 static const char *setup_prog_dir(void) {
-    char *result = NULL;
+    char *result = nullptr;
     struct passwd *pw;
 
     const char *temp_dir = getenv("YAWL_INSTALL_DIR");
@@ -195,14 +195,14 @@ static const char *setup_prog_dir(void) {
         if (result)
             fprintf(stderr, "Attempted directory: %s\n", result);
         free(result);
-        result = NULL;
+        result = nullptr;
     }
 
     return result;
 }
 
 static const char *setup_config_dir(void) {
-    char *result = NULL;
+    char *result = nullptr;
     join_paths(result, g_yawl_dir, CONFIG_DIR);
 
     RESULT ensure_result = ensure_dir(result);
@@ -211,15 +211,15 @@ static const char *setup_config_dir(void) {
         if (result)
             fprintf(stderr, "Attempted directory: %s\n", result);
         free(result);
-        result = NULL;
+        result = nullptr;
     }
 
     return result;
 }
 
 static RESULT verify_runtime(const char *runtime_path) {
-    char *versions_txt_path = NULL;
-    char *pv_verify_path = NULL;
+    char *versions_txt_path = nullptr;
+    char *pv_verify_path = nullptr;
     RESULT result;
 
     /* First, a lightweight check for VERSIONS.txt (same as the SLR shell script) */
@@ -241,10 +241,10 @@ static RESULT verify_runtime(const char *runtime_path) {
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
     }
 
-    char *cmd = NULL;
+    char *cmd = nullptr;
     append_sep(cmd, " ", pv_verify_path, "--quiet");
 
-    char *old_cwd = getcwd(NULL, 0);
+    char *old_cwd = getcwd(nullptr, 0);
 
     if (chdir(runtime_path) != 0) {
         result = result_from_errno();
@@ -276,7 +276,7 @@ static RESULT verify_runtime(const char *runtime_path) {
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_INVALID_ARG);
     }
 
-    char *entry_point = NULL;
+    char *entry_point = nullptr;
     join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
 
     if (!is_exec_file(entry_point)) {
@@ -325,7 +325,7 @@ static RESULT setup_runtime(const struct options *opts) {
     /* Reinstall obviously implies verify */
     RESULT ret = RESULT_OK;
     int install = opts->reinstall, verify = (opts->verify || opts->reinstall);
-    char *archive_path = NULL, *runtime_path = NULL;
+    char *archive_path = nullptr, *runtime_path = nullptr;
     struct stat st;
 
     join_paths(archive_path, g_yawl_dir, RUNTIME_ARCHIVE_NAME);
@@ -389,7 +389,7 @@ static RESULT setup_runtime(const struct options *opts) {
             }
 
             if (download) {
-                success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path, NULL);
+                success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path, nullptr);
                 if (FAILED(success)) {
                     LOG_RESULT(LOG_ERROR, success, "Failed to download runtime");
                     continue;
@@ -431,14 +431,14 @@ static char *get_top_libdir(const char *exec_path) {
         *last_slash = '\0';
     } else {
         free(dirname);
-        return NULL;
+        return nullptr;
     }
     return dirname;
 }
 
 static char *build_library_paths(const char *exec_path) {
     char *top_libdir = get_top_libdir(exec_path);
-    char *result = NULL;
+    char *result = nullptr;
     struct stat st;
 
     const char *orig_path = getenv("LD_LIBRARY_PATH");
@@ -448,7 +448,7 @@ static char *build_library_paths(const char *exec_path) {
     /* append_sep with "" as separator just acts like concatenation */
     if (top_libdir && stat(top_libdir, &st) == 0 && S_ISDIR(st.st_mode))
         append_sep(result, "", orig_path ? ":" : "", top_libdir, "/lib64:", top_libdir, "/lib32:", top_libdir, "/lib");
-    
+
     free(top_libdir);
     return result;
 }
@@ -460,8 +460,8 @@ static char *build_mesa_paths(void) {
                                 "/usr/lib/dri",
                                 "/usr/lib32/dri",
                                 "/usr/lib64/dri",
-                                NULL};
-    char *result = NULL;
+                                nullptr};
+    char *result = nullptr;
 
     const char *orig_path = getenv("LIBGL_DRIVERS_PATH");
     if (orig_path)
@@ -483,12 +483,12 @@ static char *get_config_name(const char *argv0, const struct options *opts) {
 
     char *base_name = get_base_name(argv0);
     if (!base_name)
-        return NULL;
+        return nullptr;
 
     char *dash = strchr(base_name, '-');
     if (!dash) {
         free(base_name);
-        return NULL;
+        return nullptr;
     }
 
     char *config_name = strdup(dash + 1);
@@ -499,8 +499,8 @@ static char *get_config_name(const char *argv0, const struct options *opts) {
 
 /* Create a configuration file with the current options */
 static RESULT create_config_file(const char *config_name, const struct options *opts) {
-    char *config_path = NULL;
-    FILE *fp = NULL;
+    char *config_path = nullptr;
+    FILE *fp = nullptr;
     RESULT result = RESULT_OK;
 
     /* Build the config file path */
@@ -530,14 +530,14 @@ static RESULT create_config_file(const char *config_name, const struct options *
 
 /* Create a symlink to the current binary with the suffix */
 static RESULT create_symlink(const char *config_name) {
-    char *exec_path = NULL;
-    char *exec_dir = NULL;
-    char *base_name = NULL;
-    char *symlink_path = NULL;
+    char *exec_path = nullptr;
+    char *exec_dir = nullptr;
+    char *base_name = nullptr;
+    char *symlink_path = nullptr;
     RESULT result = RESULT_OK;
 
     /* Get the full path to the current executable */
-    exec_path = realpath("/proc/self/exe", NULL);
+    exec_path = realpath("/proc/self/exe", nullptr);
     if (!exec_path) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to get executable path");
@@ -583,7 +583,7 @@ static RESULT create_symlink(const char *config_name) {
  * `${WINE}server`. */
 static RESULT create_wineserver_wrapper(const char *config_name, const char *wineserver_path) {
     struct options server_opts;
-    char *server_config_name = NULL;
+    char *server_config_name = nullptr;
     RESULT result = RESULT_OK;
 
     server_opts.version = 0;
@@ -593,9 +593,9 @@ static RESULT create_wineserver_wrapper(const char *config_name, const char *win
     server_opts.check = 0;
     server_opts.update = 0;
     server_opts.exec_path = strdup(wineserver_path);
-    server_opts.make_wrapper = NULL;
-    server_opts.config = NULL;
-    server_opts.wineserver = NULL;
+    server_opts.make_wrapper = nullptr;
+    server_opts.config = nullptr;
+    server_opts.wineserver = nullptr;
 
     /* Create the config name: append "server" to the base name */
     server_config_name = strdup(config_name);
@@ -609,7 +609,7 @@ static RESULT create_wineserver_wrapper(const char *config_name, const char *win
     if (FAILED(result))
         goto ws_done;
 
-    char *exec_path = realpath("/proc/self/exe", NULL);
+    char *exec_path = realpath("/proc/self/exe", nullptr);
     if (!exec_path) {
         LOG_INFO("Created wineserver wrapper: <basename>-%s", server_config_name);
     } else {
@@ -646,8 +646,8 @@ static RESULT create_wrapper(const char *config_name, const struct options *opts
 
 /* Load a configuration from a file, overrides opts passed in from env var */
 static RESULT load_config(const char *config_name, struct options *opts) {
-    char *config_path = NULL;
-    FILE *fp = NULL;
+    char *config_path = nullptr;
+    FILE *fp = nullptr;
     char line[BUFFER_SIZE];
     RESULT result = RESULT_OK;
 
@@ -806,7 +806,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char *entry_point = NULL;
+    char *entry_point = nullptr;
     join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
     if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
@@ -845,7 +845,7 @@ int main(int argc, char *argv[]) {
                 *last_slash = '\0';
 
                 const char *orig_path = getenv("PATH");
-                char *new_path = NULL;
+                char *new_path = nullptr;
 
                 if (orig_path)
                     append_sep(new_path, ":", exec_dir, orig_path);
