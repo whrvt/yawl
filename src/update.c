@@ -370,6 +370,8 @@ static RESULT check_for_updates(void) {
     if (FAILED(result)) {
         unlink(release_file);
         free(release_file);
+        free(tag_name);
+        free(download_url);
         return result;
     }
 
@@ -404,7 +406,7 @@ static RESULT check_for_updates(void) {
 
 static RESULT perform_update(void) {
     char *release_file = nullptr;
-    char download_url[1024] = {0};
+    char download_url[1024] = {};
     char *temp_binary = nullptr;
     char *self_path = nullptr;
     char *download_dir = nullptr;

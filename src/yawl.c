@@ -138,17 +138,6 @@ static RESULT parse_option(const char *option, struct options *opts) {
 }
 
 static RESULT parse_env_options(struct options *opts) {
-    opts->version = 0;
-    opts->verify = 0;
-    opts->reinstall = 0;
-    opts->help = 0;
-    opts->check = 0;
-    opts->update = 0;
-    opts->exec_path = strdup(DEFAULT_EXEC_PATH);
-    opts->make_wrapper = nullptr;
-    opts->config = nullptr;
-    opts->wineserver = nullptr;
-
     const char *verbs = getenv("YAWL_VERBS");
     if (!verbs)
         return RESULT_OK;
@@ -299,8 +288,8 @@ static RESULT verify_runtime(const char *runtime_path) {
 }
 
 static RESULT verify_slr_hash(const char *archive_path, const char *hash_url) {
-    char expected_hash[65] = {0};
-    char actual_hash[65] = {0};
+    char expected_hash[65] = {};
+    char actual_hash[65] = {};
     RESULT result;
 
     result = get_online_slr_sha256sum(RUNTIME_ARCHIVE_NAME, hash_url, expected_hash);
@@ -582,20 +571,12 @@ static RESULT create_symlink(const char *config_name) {
 /* Create a wineserver wrapper configuration and symlink. Useful for winetricks, as it can find wineserver from
  * `${WINE}server`. */
 static RESULT create_wineserver_wrapper(const char *config_name, const char *wineserver_path) {
-    struct options server_opts;
+    struct options server_opts = {};
     char *server_config_name = nullptr;
     RESULT result = RESULT_OK;
 
-    server_opts.version = 0;
-    server_opts.verify = 0;
-    server_opts.reinstall = 0;
-    server_opts.help = 0;
-    server_opts.check = 0;
-    server_opts.update = 0;
+    /* Initialize the exec_path */
     server_opts.exec_path = strdup(wineserver_path);
-    server_opts.make_wrapper = nullptr;
-    server_opts.config = nullptr;
-    server_opts.wineserver = nullptr;
 
     /* Create the config name: append "server" to the base name */
     server_config_name = strdup(config_name);
@@ -710,9 +691,6 @@ static RESULT load_config(const char *config_name, struct options *opts) {
 /* Note that we don't *really* care about freeing things from main(), since that's handled
    either when execv() is called or when the process exits. */
 int main(int argc, char *argv[]) {
-    struct options opts;
-    RESULT result;
-
     if (geteuid() == 0) {
         fprintf(stderr, "This program should not be run as root. Exiting.\n");
         return 1;
@@ -729,11 +707,16 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    RESULT result;
+
     result = log_init();
     if (FAILED(result) && (RESULT_CODE(result) != E_CANCELED))
         fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
 
     LOG_DEBUG(PROG_NAME " directories initialized - g_yawl_dir: %s, g_config_dir: %s", g_yawl_dir, g_config_dir);
+
+    struct options opts = {};
+    opts.exec_path = strdup(DEFAULT_EXEC_PATH);
 
     result = parse_env_options(&opts);
     LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to parse options");

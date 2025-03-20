@@ -34,9 +34,9 @@ static RESULT test_container(const char *entry_point) {
     char *stdout_file = nullptr;
     char *stderr_file = nullptr;
     FILE *stderr_fp = nullptr;
+    char error_buf[BUFFER_SIZE] = {};
     int ret = 0;
     int apparmor_issue = 0;
-    char error_buf[BUFFER_SIZE] = {0};
 
     join_paths(stdout_file, g_yawl_dir, "test_stdout.tmp");
     join_paths(stderr_file, g_yawl_dir, "test_stderr.tmp");
