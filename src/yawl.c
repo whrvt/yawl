@@ -438,25 +438,18 @@ static char *get_top_libdir(const char *exec_path) {
 
 static char *build_library_paths(const char *exec_path) {
     char *top_libdir = get_top_libdir(exec_path);
-    char *lib64_path = NULL, *lib32_path = NULL, *lib_path = NULL;
     char *result = NULL;
+    struct stat st;
 
     const char *orig_path = getenv("LD_LIBRARY_PATH");
     if (orig_path)
         result = strdup(orig_path);
 
-    if (top_libdir) {
-        join_paths(lib64_path, top_libdir, "lib64");
-        join_paths(lib32_path, top_libdir, "lib32");
-        join_paths(lib_path, top_libdir, "lib");
-
-        append_sep(result, ":", lib64_path, lib32_path, lib_path);
-
-        free(lib64_path);
-        free(lib32_path);
-        free(lib_path);
-        free(top_libdir);
-    }
+    /* append_sep with "" as separator just acts like concatenation */
+    if (top_libdir && stat(top_libdir, &st) == 0 && S_ISDIR(st.st_mode))
+        append_sep(result, "", orig_path ? ":" : "", top_libdir, "/lib64:", top_libdir, "/lib32:", top_libdir, "/lib");
+    
+    free(top_libdir);
     return result;
 }
 
@@ -468,8 +461,12 @@ static char *build_mesa_paths(void) {
                                 "/usr/lib32/dri",
                                 "/usr/lib64/dri",
                                 NULL};
-
     char *result = NULL;
+
+    const char *orig_path = getenv("LIBGL_DRIVERS_PATH");
+    if (orig_path)
+        result = strdup(orig_path);
+
     for (const char **path = mesa_paths; *path; path++) {
         if (access(*path, F_OK) == 0)
             append_sep(result, ":", *path);
@@ -481,8 +478,8 @@ static char *build_mesa_paths(void) {
 /* Config name to load, either from YAWL_VERBS="config=" or from argv[0] (e.g., "yawl-foo-bar" -> "foo-bar")
  * (allocates) */
 static char *get_config_name(const char *argv0, const struct options *opts) {
-    if (opts->config)
-        return strdup(opts->config);
+    if (opts->config) /* Already allocated in parse_option */
+        return opts->config;
 
     char *base_name = get_base_name(argv0);
     if (!base_name)

@@ -45,15 +45,12 @@
 
 #define STRING_AFTER_PREFIX(string, prefix) (string + (sizeof(prefix) - 1UL))
 
-void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, ...);
+void _append_sep_impl(char **result_ptr, const char *separator, int num_strings, ...);
 
 #define COUNT_JOIN_ARGS(...) (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *))
 
 /* Join strings with a `sep` separator into the first argument (`result`) */
-#define append_sep(result, sep, ...)                                                                                   \
-    do {                                                                                                               \
-        _append_sep_impl(&(result), sep, COUNT_JOIN_ARGS(__VA_ARGS__), __VA_ARGS__);                                   \
-    } while (0)
+#define append_sep(result, sep, ...) _append_sep_impl(&(result), sep, COUNT_JOIN_ARGS(__VA_ARGS__) __VA_OPT__(,) __VA_ARGS__)
 
 /* Join paths with a `/` separator into the first argument (`result`) */
 #define join_paths(result, ...) append_sep(result, "/", __VA_ARGS__)

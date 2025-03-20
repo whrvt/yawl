@@ -1,4 +1,4 @@
-AC_INIT([yawl], [0.6.3], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
+AC_INIT([yawl], [0.6.4], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_SRCDIR([src/yawl.c])
@@ -302,8 +302,8 @@ ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
 CPPFLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
 CFLAGS="-std=gnu23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing \
     -static -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection -fstack-protector-all \
-    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wa,--noexecstack \
-    -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
+    -Wno-zero-length-array -Wa,--noexecstack -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
 LDFLAGS="$CFLAGS"
 
 AC_SUBST([CPPFLAGS])

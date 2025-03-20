@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <wordexp.h>
@@ -29,46 +30,58 @@
 #include "openssl/evp.h"
 #include "util.h"
 
-void _append_sep_impl(char **result_ptr, const char *separator, int num_paths, ...) {
-    va_list args;
-    va_start(args, num_paths);
+void _append_sep_impl(char **result_ptr, const char *separator, int num_strings, ...) {
+    assert(num_strings >= 0);
 
-    if (num_paths <= 0) {
+    char *old_result = *result_ptr;
+    size_t old_len = (old_result != NULL) ? strlen(old_result) : 0;
+    size_t sep_len = strlen(separator);
+    size_t total_length = old_len;
+
+    int num_separators = num_strings;
+    if (old_len == 0 && num_strings > 0)
+        num_separators--;
+
+    total_length += num_separators * sep_len;
+
+    va_list args, args_copy;
+    va_start(args, num_strings);
+    va_copy(args_copy, args);
+
+    for (int i = 0; i < num_strings; i++) {
+        const char *str = va_arg(args_copy, const char *);
+        total_length += strlen(str);
+    }
+    va_end(args_copy);
+
+    char *new_result = realloc(old_result, total_length + 1);
+    assert(new_result != NULL); /* don't fail malloc */
+
+    /* early return for the degenerate case (no separator or strings to add) */
+    if (old_len == 0 && num_strings == 0) {
+        new_result[0] = '\0';
+        *result_ptr = new_result;
         va_end(args);
         return;
     }
 
-    const char *first_path = va_arg(args, const char *);
+    /* do the concatenation */
+    char *dest = new_result + old_len;
+    for (int i = 0; i < num_strings; i++) {
+        const char *str = va_arg(args, const char *);
 
-    if (*result_ptr == NULL || **result_ptr == '\0') {
-        free(*result_ptr);
-        *result_ptr = strdup(first_path);
-    } else {
-        size_t current_len = strlen(*result_ptr);
-        size_t sep_len = strlen(separator);
-        size_t next_len = strlen(first_path);
-        size_t new_size = current_len + sep_len + next_len + 1;
+        if (i > 0 || old_len > 0) {
+            memcpy(dest, separator, sep_len);
+            dest += sep_len;
+        }
 
-        *result_ptr = realloc(*result_ptr, new_size);
-
-        strcat(*result_ptr, separator);
-        strcat(*result_ptr, first_path);
+        size_t str_len = strlen(str);
+        memcpy(dest, str, str_len);
+        dest += str_len;
     }
+    *dest = '\0';
 
-    for (int i = 1; i < num_paths; i++) {
-        const char *next_path = va_arg(args, const char *);
-
-        size_t current_len = strlen(*result_ptr);
-        size_t sep_len = strlen(separator);
-        size_t next_len = strlen(next_path);
-        size_t new_size = current_len + sep_len + next_len + 1;
-
-        *result_ptr = realloc(*result_ptr, new_size);
-
-        strcat(*result_ptr, separator);
-        strcat(*result_ptr, next_path);
-    }
-
+    *result_ptr = new_result;
     va_end(args);
 }
 
