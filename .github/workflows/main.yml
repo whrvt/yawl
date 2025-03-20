@@ -15,6 +15,11 @@ permissions:
   discussions: write
 
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+
 jobs:
   version:
     name: Version
@@ -79,9 +84,15 @@ jobs:
       with:
         fetch-depth: 0
         fetch-tags: true
+    - uses: actions/download-artifact@v4
+      with:
+        name: yawl-${{ needs.version.outputs.full_desc }}
+        path: yawl-${{ github.ref_name }}
     - name: Create
       id: create
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: >-
         gh
         release create
@@ -90,13 +101,10 @@ jobs:
         --title "Version ${{ github.ref_name }}"
         --notes-from-tag
         --verify-tag
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - uses: actions/download-artifact@v4
-      with:
-        name: yawl-${{ github.ref_name }}
     - name: Upload
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: >-
         gh
         --repo "${{ github.server_url }}/${{ github.repository }}"
@@ -104,5 +112,3 @@ jobs:
         ${{ github.ref_name }}
         yawl-${{ github.ref_name }}
         --clobber
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
