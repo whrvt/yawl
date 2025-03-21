@@ -25,13 +25,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#define G_LOG_DOMAIN "json-glib"
+#include "json-glib/json-glib.h"
+
+#include "cleanup.h"
 #include "config.h"
 #include "log.h"
 #include "update.h"
 #include "util.h"
-
-#define G_LOG_DOMAIN "json-glib"
-#include "json-glib/json-glib.h"
 
 #define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/" PROG_NAME "/releases/latest"
 #define GITHUB_RELEASES_PAGE_URL PACKAGE_URL "/releases/download"
@@ -42,20 +43,25 @@
 #define NEW_BINARY_FILE PROG_NAME ".new"
 #define BACKUP_SUFFIX ".bak"
 
-/* Parse version string and return a comparable integer */
-static int parse_version(const char *version) {
-    if (!version || *version == '\0')
-        return -1;
-
-    if (*version == 'v')
-        version++;
-
-    int major = 0, minor = 0, patch = 0;
-    if (sscanf(version, "%d.%d.%d", &major, &minor, &patch) < 1)
-        return -1;
-
-    return (major * 10000) + (minor * 100) + patch;
+/* json-glib specific cleanup */
+static inline void cleanup_json_parser(void *p) {
+    JsonParser **parser = (JsonParser **)p;
+    if (parser && *parser) {
+        g_object_unref(*parser);
+        *parser = nullptr;
+    }
 }
+
+[[gnu::always_inline]] static inline void cleanup_gerror(void *p) {
+    GError **error = (GError **)p;
+    if (error && *error) {
+        g_error_free(*error);
+        *error = nullptr;
+    }
+}
+
+#define AUTO_JSON_UNREF [[gnu::cleanup(cleanup_json_parser)]]
+#define AUTO_GERROR_FREE [[gnu::cleanup(cleanup_gerror)]]
 
 /* Parse release info and check if an update is available */
 static RESULT parse_release_info(const char *json_path, char *tag_name[], char *download_url[]) {
@@ -65,23 +71,19 @@ static RESULT parse_release_info(const char *json_path, char *tag_name[], char *
     *tag_name = nullptr;
     *download_url = nullptr;
 
-    JsonParser *parser = json_parser_new();
-    GError *error = nullptr;
+    AUTO_JSON_UNREF JsonParser *parser = json_parser_new();
+    AUTO_GERROR_FREE GError *error = nullptr;
 
     /* Load and parse the JSON file */
     json_parser_load_from_file(parser, json_path, &error);
     if (error) {
         LOG_ERROR("Failed to parse JSON: %s", error->message);
-        g_error_free(error);
-        g_object_unref(parser);
         return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_PARSE_ERROR);
     }
 
     JsonNode *root = json_parser_get_root(parser);
-    if (!root || JSON_NODE_TYPE(root) != JSON_NODE_OBJECT) {
-        g_object_unref(parser);
+    if (!root || JSON_NODE_TYPE(root) != JSON_NODE_OBJECT)
         return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_PARSE_ERROR);
-    }
 
     JsonObject *root_obj = json_node_get_object(root);
 
@@ -90,11 +92,8 @@ static RESULT parse_release_info(const char *json_path, char *tag_name[], char *
         const char *tag = json_object_get_string_member(root_obj, "tag_name");
         *tag_name = strdup(tag);
     } else {
-        g_object_unref(parser);
         return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_NOT_FOUND);
     }
-
-    g_object_unref(parser);
 
     /* Format the download URL */
     if (*tag_name)
@@ -128,87 +127,71 @@ static RESULT make_executable(const char *file_path) {
     return RESULT_OK;
 }
 
-/* TODO: refactor the file replacement/copying/backup functions below, could be made a lot clearer and simpler */
 static RESULT copy_file_raw(const char *source, const char *destination, int use_temp) {
-    FILE *src = nullptr, *dst = nullptr;
-    char buffer[BUFFER_SIZE];
-    size_t bytes_read;
-    RESULT result = RESULT_OK;
-    char *actual_dest = nullptr;
-
-    src = fopen(source, "rb");
-    if (!src)
-        return result_from_errno();
+    AUTO_FREE char *actual_dest = nullptr;
 
     if (use_temp)
         append_sep(actual_dest, "", destination, ".tmp");
     else
         actual_dest = strdup(destination);
 
-    dst = fopen(actual_dest, "wb");
-    if (!dst) {
-        RESULT err_result = result_from_errno();
-        free(actual_dest);
-        fclose(src);
-        return err_result;
-    }
+    /* Open source file (scoped) */
+    {
+        AUTO_FCLOSE FILE *src = fopen(source, "rb");
+        if (!src)
+            return result_from_errno();
 
-    /* Copy the file contents in chunks */
-    while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, src)) > 0) {
-        if (fwrite(buffer, 1, bytes_read, dst) != bytes_read) {
-            result = result_from_errno();
-            LOG_RESULT(LOG_ERROR, result, "Failed to write to destination file");
+        /* Open destination file in its own scope */
+        AUTO_FCLOSE FILE *dst = fopen(actual_dest, "wb");
+        if (!dst)
+            return result_from_errno();
 
-            fclose(src);
-            fclose(dst);
+        /* Copy the file contents in chunks */
+        char buffer[BUFFER_SIZE];
+        size_t bytes_read;
+        while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, src)) > 0) {
+            if (fwrite(buffer, 1, bytes_read, dst) != bytes_read) {
+                RESULT result = result_from_errno();
+                LOG_RESULT(LOG_ERROR, result, "Failed to write to destination file");
+                unlink(actual_dest);
+                return result;
+            }
+        }
+
+        if (ferror(src)) {
+            RESULT result = result_from_errno();
+            LOG_RESULT(LOG_ERROR, result, "Failed to read from source file");
             unlink(actual_dest);
-            free(actual_dest);
             return result;
         }
+
+        /* Ensure all data is written */
+        fflush(dst);
+
+        /* Preserve perms */
+        struct stat src_stat;
+        if (stat(source, &src_stat) == 0)
+            fchmod(fileno(dst), src_stat.st_mode);
     }
-
-    if (ferror(src)) {
-        result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to read from source file");
-
-        fclose(src);
-        fclose(dst);
-        unlink(actual_dest);
-        free(actual_dest);
-        return result;
-    }
-
-    /* Ensure all data is written */
-    fflush(dst);
-
-    /* Preserve perms */
-    struct stat src_stat;
-    if (stat(source, &src_stat) == 0)
-        fchmod(fileno(dst), src_stat.st_mode);
-
-    fclose(src);
-    fclose(dst);
+    /* Files are now closed */
 
     /* If we're using a temp file, rename it to the actual destination */
     if (use_temp) {
         if (rename(actual_dest, destination) != 0) {
             if (errno == EXDEV) {
                 LOG_DEBUG("Cross-device rename detected, trying direct copy");
-                result = copy_file_raw(actual_dest, destination, 0);
+                RESULT result = copy_file_raw(actual_dest, destination, 0);
                 unlink(actual_dest);
-                free(actual_dest);
                 return result;
             } else {
-                result = result_from_errno();
+                RESULT result = result_from_errno();
                 LOG_RESULT(LOG_ERROR, result, "Failed to rename temporary file");
                 unlink(actual_dest);
-                free(actual_dest);
                 return result;
             }
         }
     }
 
-    free(actual_dest);
     return RESULT_OK;
 }
 
@@ -216,7 +199,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
 static RESULT copy_file(const char *source, const char *destination) {
     RESULT result = RESULT_OK;
 
-    char *backup_file = nullptr;
+    AUTO_FREE char *backup_file = nullptr;
     join_paths(backup_file, g_yawl_dir, PROG_NAME BACKUP_SUFFIX);
 
     if (access(destination, F_OK) == 0) {
@@ -228,14 +211,12 @@ static RESULT copy_file(const char *source, const char *destination) {
                 result = copy_file_raw(destination, backup_file, 0);
                 if (FAILED(result)) {
                     LOG_RESULT(LOG_ERROR, result, "Failed to create backup copy");
-                    free(backup_file);
                     return result;
                 }
             } else {
                 result = result_from_errno();
                 /* too dangerous to try continuing */
                 LOG_RESULT(LOG_ERROR, result, "Failed to create backup");
-                free(backup_file);
                 return result;
             }
         }
@@ -244,26 +225,20 @@ static RESULT copy_file(const char *source, const char *destination) {
     result = copy_file_raw(source, destination, 1);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to copy new binary");
-
         if (access(backup_file, F_OK) == 0) {
             LOG_INFO("Restoring from backup");
             if (rename(backup_file, destination) != 0) {
                 if (errno == EXDEV) {
                     RESULT restore_result = copy_file_raw(backup_file, destination, 0);
-                    if (FAILED(restore_result)) {
+                    if (FAILED(restore_result))
                         LOG_RESULT(LOG_ERROR, restore_result, "Failed to restore from backup");
-                    }
                 }
             }
         }
-
-        free(backup_file);
         return result;
     }
 
     LOG_DEBUG("Backup created at %s", backup_file);
-    free(backup_file);
-
     return RESULT_OK;
 }
 
@@ -302,23 +277,16 @@ static RESULT replace_binary(const char *new_binary, const char *current_binary)
             LOG_DEBUG_RESULT(result_from_errno(), "renameat2 failed");
 
         /* Fallback method: Create a backup and use rename */
-        char *backup_file = nullptr;
+        AUTO_FREE char *backup_file = nullptr;
         append_sep(backup_file, "", current_binary, BACKUP_SUFFIX);
 
         /* Step 1: Backup the current binary */
-        if (access(backup_file, F_OK) == 0) {
-            if (unlink(backup_file) != 0) {
-                RESULT result = result_from_errno();
-                free(backup_file);
-                return result;
-            }
-        }
+        if (access(backup_file, F_OK) == 0)
+            if (unlink(backup_file) != 0)
+                return result_from_errno();
 
-        if (link(current_binary, backup_file) != 0) {
-            RESULT result = result_from_errno();
-            free(backup_file);
-            return result;
-        }
+        if (link(current_binary, backup_file) != 0)
+            return result_from_errno();
 
         /* Step 2: Replace the current binary with the new one */
         if (rename(new_binary, current_binary) != 0) {
@@ -326,25 +294,38 @@ static RESULT replace_binary(const char *new_binary, const char *current_binary)
             LOG_ERROR("Failed to replace binary, restoring from backup");
             unlink(current_binary);
             rename(backup_file, current_binary);
-            free(backup_file);
             return result;
         }
 
         LOG_DEBUG("Backup created at %s", backup_file);
-        free(backup_file);
         return RESULT_OK;
     }
     LOG_DEBUG("Files on different filesystems, using copy method");
     return copy_file(new_binary, current_binary);
 }
 
+/* Parse version string and return a comparable integer */
+static int parse_version(const char *version) {
+    if (!version || *version == '\0')
+        return -1;
+
+    if (*version == 'v')
+        version++;
+
+    int major = 0, minor = 0, patch = 0;
+    if (sscanf(version, "%d.%d.%d", &major, &minor, &patch) < 1)
+        return -1;
+
+    return (major * 10000) + (minor * 100) + patch;
+}
+
 static RESULT check_for_updates(void) {
-    char *release_file = nullptr;
-    char *tag_name = nullptr;
-    char *download_url = nullptr;
+    AUTO_FREE char *release_file = nullptr;
+    AUTO_FREE char *tag_name = nullptr;
+    AUTO_FREE char *download_url = nullptr;
     RESULT result;
     const char *headers[] = {"Accept: application/vnd.github+json", "X-GitHub-Api-Version: 2022-11-28",
-                                       "User-Agent: " UPDATE_USER_AGENT, nullptr};
+                             "User-Agent: " UPDATE_USER_AGENT, nullptr};
 
     LOG_INFO("Checking for updates...");
 
@@ -353,7 +334,6 @@ static RESULT check_for_updates(void) {
     result = download_file(GITHUB_API_RELEASES_URL, release_file, headers);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to download release information");
-        free(release_file);
         return result;
     }
 
@@ -361,9 +341,6 @@ static RESULT check_for_updates(void) {
     result = parse_release_info(release_file, &tag_name, &download_url);
     if (FAILED(result)) {
         unlink(release_file);
-        free(release_file);
-        free(tag_name);
-        free(download_url);
         return result;
     }
 
@@ -374,81 +351,59 @@ static RESULT check_for_updates(void) {
     if (latest_version <= current_version) {
         LOG_INFO("You are already running the latest version (%s).", VERSION);
         unlink(release_file);
-        free(release_file);
-        free(tag_name);
-        free(download_url);
         return RESULT_OK;
     }
 
     LOG_INFO("Update available: %s -> %s", "v" VERSION, tag_name);
 
     /* Save download URL for later use */
-    FILE *fp = fopen(release_file, "w");
-    if (fp) {
+    AUTO_FCLOSE FILE *fp = fopen(release_file, "w");
+    if (fp)
         fprintf(fp, "%s", download_url);
-        fclose(fp);
-    }
-
-    free(tag_name);
-    free(download_url);
-    free(release_file);
 
     return MAKE_RESULT(SEV_INFO, CAT_GENERAL, E_UPDATE_AVAILABLE);
 }
 
 static RESULT perform_update(void) {
-    char *release_file = nullptr;
+    AUTO_UNLINK_FREE char *release_file = nullptr;
+    AUTO_UNLINK_FREE char *temp_binary = nullptr;
+    AUTO_FREE char *self_path = nullptr;
+    AUTO_FREE char *download_dir = nullptr;
     char download_url[1024] = {};
-    char *temp_binary = nullptr;
-    char *self_path = nullptr;
-    char *download_dir = nullptr;
     RESULT result;
 
     /* Get the download URL from the saved file */
     join_paths(release_file, g_yawl_dir, RELEASE_INFO_FILE);
 
-    FILE *fp = fopen(release_file, "r");
-    if (!fp) {
-        result = result_from_errno();
-        free(release_file);
-        return result;
-    }
+    AUTO_FCLOSE FILE *fp = fopen(release_file, "r");
+    if (!fp)
+        return result_from_errno();
 
-    if (!fgets(download_url, sizeof(download_url), fp)) {
-        fclose(fp);
-        free(release_file);
+    if (!fgets(download_url, sizeof(download_url), fp))
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_PARSE_ERROR);
-    }
-
-    fclose(fp);
 
     /* Get current executable path */
     self_path = realpath("/proc/self/exe", nullptr);
-    if (!self_path) {
-        free(release_file);
+    if (!self_path)
         return result_from_errno();
-    }
 
-    /* First try: Same directory as executable */
-    download_dir = strdup(self_path);
+    /* Try to use same directory as executable (scoped) */
+    {
+        AUTO_FREE char *temp_dir = strdup(self_path);
+        if (temp_dir) {
+            char *last_slash = strrchr(temp_dir, '/');
+            if (last_slash) {
+                *last_slash = '\0'; /* Truncate to get directory */
 
-    char *last_slash = strrchr(download_dir, '/');
-    if (last_slash) {
-        *last_slash = '\0'; /* Truncate to get directory */
-
-        /* Check if directory is writable */
-        if (access(download_dir, W_OK) == 0) {
-            LOG_DEBUG("Using executable directory for download: %s", download_dir);
-            join_paths(temp_binary, download_dir, NEW_BINARY_FILE);
-        } else {
-            /* Not writable, fallback to yawl_dir */
-            free(download_dir);
-            download_dir = nullptr;
+                /* Check if directory is writable */
+                if (access(temp_dir, W_OK) == 0) {
+                    LOG_DEBUG("Using executable directory for download: %s", temp_dir);
+                    download_dir = temp_dir;
+                    temp_dir = nullptr; /* Transfer ownership, don't free */
+                    join_paths(temp_binary, download_dir, NEW_BINARY_FILE);
+                }
+            }
         }
-    } else {
-        /* Shouldn't happen with realpath, but just in case */
-        free(download_dir);
-        download_dir = nullptr;
     }
 
     /* Use yawl_dir if exec dir is unwritable */
@@ -461,29 +416,20 @@ static RESULT perform_update(void) {
     result = download_file(download_url, temp_binary, nullptr);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to download update");
-        goto cleanup_update;
+        return result;
     }
 
     result = make_executable(temp_binary);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to set executable permissions");
-        goto cleanup_update;
+        return result;
     }
 
     LOG_INFO("Installing update...");
     result = replace_binary(temp_binary, self_path);
 
-cleanup_update:
-    if (SUCCEEDED(result)) {
-        unlink(temp_binary); /* Keep the temp_binary around unless we succeeded */
+    if (SUCCEEDED(result))
         result = MAKE_RESULT(SEV_INFO, CAT_RUNTIME, E_UPDATE_PERFORMED);
-    }
-
-    unlink(release_file);
-    free(release_file);
-    free(self_path);
-    free(download_dir);
-    free(temp_binary);
 
     return result;
 }
