@@ -572,7 +572,7 @@ static RESULT create_symlink(const char *config_name) {
  * `${WINE}server`. */
 static RESULT create_wineserver_wrapper(const char *config_name, const char *wineserver_path) {
     struct options server_opts = {};
-    char *server_config_name = nullptr;
+    char *server_config_name = nullptr, *exec_path = nullptr, *base_name = nullptr;
     RESULT result = RESULT_OK;
 
     /* Initialize the exec_path */
@@ -590,11 +590,11 @@ static RESULT create_wineserver_wrapper(const char *config_name, const char *win
     if (FAILED(result))
         goto ws_done;
 
-    char *exec_path = realpath("/proc/self/exe", nullptr);
+    exec_path = realpath("/proc/self/exe", nullptr);
     if (!exec_path) {
         LOG_INFO("Created wineserver wrapper: <basename>-%s", server_config_name);
     } else {
-        char *base_name = get_base_name(exec_path);
+        base_name = get_base_name(exec_path);
         free(exec_path);
         LOG_INFO("Created wineserver wrapper: %s-%s", base_name, server_config_name);
         free(base_name);
@@ -796,10 +796,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char **new_argv = calloc(argc + 4, sizeof(char *));
+    char **new_argv = (char **)calloc(argc + 4, sizeof(char *));
     new_argv[0] = entry_point;
-    new_argv[1] = "--verb=waitforexitandrun";
-    new_argv[2] = "--";
+    new_argv[1] = (char *)"--verb=waitforexitandrun";
+    new_argv[2] = (char *)"--";
     new_argv[3] = opts.exec_path;
 
     for (int i = 1; i < argc; i++) {

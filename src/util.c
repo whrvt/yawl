@@ -30,7 +30,7 @@
 #include "openssl/evp.h"
 #include "util.h"
 
-void _append_sep_impl(char **result_ptr, const char *separator, int num_strings, ...) {
+void _append_sep_impl(char *result_ptr[], const char *separator, int num_strings, ...) {
     assert(num_strings >= 0);
 
     char *old_result = *result_ptr;
@@ -54,7 +54,7 @@ void _append_sep_impl(char **result_ptr, const char *separator, int num_strings,
     }
     va_end(args_copy);
 
-    char *new_result = realloc(old_result, total_length + 1);
+    char *new_result = (char *)realloc(old_result, total_length + 1);
     assert(new_result != nullptr); /* don't fail malloc */
 
     /* early return for the degenerate case (no separator or strings to add) */
@@ -216,7 +216,7 @@ RESULT remove_dir(const char *path) {
     return result;
 }
 
-RESULT calculate_sha256(const char *file_path, char hash_str[static 65]) {
+RESULT calculate_sha256(const char *file_path, char hash_str[65]) {
     FILE *fp = fopen(file_path, "rb");
     if (!fp) {
         RESULT result = result_from_errno();
@@ -285,7 +285,7 @@ RESULT calculate_sha256(const char *file_path, char hash_str[static 65]) {
     return RESULT_OK;
 }
 
-RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, char hash_str[static 65]) {
+RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, char hash_str[65]) {
     char *local_sums_path = nullptr;
     FILE *fp = nullptr;
     char line[200];
@@ -345,7 +345,7 @@ static constexpr const unsigned char curl_ca_embed[] = {
 #embed "../assets/external/cacert.pem"
 };
 
-RESULT download_file(const char *url, const char *output_path, char **headers) {
+RESULT download_file(const char *url, const char *output_path, const char *headers[]) {
     if (!url || !output_path)
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
 
@@ -367,7 +367,7 @@ RESULT download_file(const char *url, const char *output_path, char **headers) {
     /* Add optional headers to the req */
     struct curl_slist *header_list = nullptr;
     if (headers) {
-        for (char **header = headers; *header; header++) {
+        for (const char **header = headers; *header; header++) {
             header_list = curl_slist_append(header_list, *header);
             if (!header_list)
                 LOG_WARNING("Failed to append header: %s", *header);
@@ -417,6 +417,7 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
     int flags = ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS |
                 ARCHIVE_EXTRACT_OWNER;
     RESULT result = RESULT_OK;
+    char *old_cwd = nullptr;
 
     a = archive_read_new();
     if (!a)
@@ -443,7 +444,7 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
         goto cleanup;
     }
 
-    char *old_cwd = getcwd(nullptr, 0);
+    old_cwd = getcwd(nullptr, 0);
     if (!old_cwd) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to get current working directory");

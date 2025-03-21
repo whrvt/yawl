@@ -14,7 +14,7 @@ AC_PROG_INSTALL
 deps_builddir="$PWD/deps/build"
 deps_prefix="$PWD/deps/prefix"
 build_prefix="$PWD/deps/yawl"
-mkdir -p "$deps_builddir" "$deps_prefix"/{lib,include} "$build_prefix/"{lib,include}
+mkdir -p "$deps_builddir" "$deps_prefix"/{lib,include} "$build_prefix/"{lib,include} "$PWD/dist/bin"
 
 # Make some wrapper shims for the dependencies to compile happily
 export PATH="${build_prefix}:${build_prefix}/zig:${PWD}/build-aux:${PATH}"
@@ -297,17 +297,26 @@ LIBNOTIFY_LIBS="-lnotify"
 JSON_GLIB_LIBS="-ljson-glib-1.0"
 
 ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
+AC_LANG(C++)
+export CXX="$CXX"
+export CC="$CXX"
+export LD="$CXX"
 
 # Shared flags/libraries for all targets
 CPPFLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-CFLAGS="-std=gnu23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing \
+CXXFLAGS="-xc++ -std=gnu++23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing \
     -static -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection -fstack-protector-all \
     -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
-    -Wno-zero-length-array -Wa,--noexecstack -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
-LDFLAGS="$CFLAGS"
+    -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wa,--noexecstack -Wl,-z,noexecstack \
+    -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+CFLAGS="$CXXFLAGS"
+LDFLAGS="$CXXFLAGS -xnone"
 
+AC_SUBST([CC])
+AC_SUBST([CXX])
+AC_SUBST([LD])
 AC_SUBST([CPPFLAGS])
-AC_SUBST([CFLAGS])
+AC_SUBST([CXXFLAGS])
 AC_SUBST([LDFLAGS])
 
 AC_SUBST([NON_GLIB_LIBS])

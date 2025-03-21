@@ -92,7 +92,7 @@ static constexpr const unsigned char bwrap_userns_restrict[] = {
 #embed "../assets/external/bwrap-userns-restrict"
 };
 
-static RESULT write_temp_apparmor_profile(char **temp_path) {
+static RESULT write_temp_apparmor_profile(char *temp_path[]) {
     FILE *fp = nullptr;
 
     /* Create a temporary file in the yawl directory */

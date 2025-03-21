@@ -450,7 +450,7 @@ case "$LIB" in
         find "${PREFIX:?}"/ '(' -iregex ".*deps/prefix.*glib.*" -o -iregex ".*deps/prefix.*pcre.*" ')' -exec rm -rf '{''}' '+'
         FLAGS_MESON=("env"
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
-            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS"
+            "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS -lm"
         )
         "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
@@ -517,6 +517,7 @@ case "$LIB" in
                             -Dglib:glib_checks=false \
                             -Dglib:libelf=disabled \
                             -Dglib:introspection=disabled build .
+        sed -i 's|.*atomic_dep = .*|atomic_dep = []|g' subprojects/glib/meson.build # this is the reason the build was failing without musl installed...?
         "${FLAGS_MESON[@]}" meson compile -C build
         "${FLAGS_MESON[@]}" meson install -C build || true # WTF?
 

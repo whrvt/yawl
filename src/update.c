@@ -57,18 +57,8 @@ static int parse_version(const char *version) {
     return (major * 10000) + (minor * 100) + patch;
 }
 
-/* Helper function to download GitHub API data */
-static RESULT download_github_release_info(const char *output_path) {
-    char user_agent[100];
-    snprintf(user_agent, sizeof(user_agent), "User-Agent: %s", UPDATE_USER_AGENT);
-
-    char *headers[] = {"Accept: application/vnd.github+json", "X-GitHub-Api-Version: 2022-11-28", user_agent, nullptr};
-
-    return download_file(GITHUB_API_RELEASES_URL, output_path, headers);
-}
-
 /* Parse release info and check if an update is available */
-static RESULT parse_release_info(const char *json_path, char **tag_name, char **download_url) {
+static RESULT parse_release_info(const char *json_path, char *tag_name[], char *download_url[]) {
     if (!json_path || !tag_name || !download_url)
         return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_INVALID_ARG);
 
@@ -284,10 +274,10 @@ static RESULT copy_file(const char *source, const char *destination) {
 #define RENAME_EXCHANGE (1 << 1)
 #define RENAME_WHITEOUT (1 << 2)
 #if defined(HAVE_RENAMEAT) && defined(SYS_renameat2)
-static inline int renameat2(int oldfd, const char *old, int newfd, const char *new, unsigned flags) {
+static inline int renameat2(int oldfd, const char *oldname, int newfd, const char *newname, unsigned flags) {
     if (!flags)
-        return syscall(SYS_renameat, oldfd, old, newfd, new);
-    return syscall(SYS_renameat2, oldfd, old, newfd, new, flags);
+        return syscall(SYS_renameat, oldfd, oldname, newfd, newname);
+    return syscall(SYS_renameat2, oldfd, oldname, newfd, newname, flags);
 }
 #else
 static inline int renameat2(int, const char *, int, const char *, unsigned) {
@@ -353,12 +343,14 @@ static RESULT check_for_updates(void) {
     char *tag_name = nullptr;
     char *download_url = nullptr;
     RESULT result;
+    const char *headers[] = {"Accept: application/vnd.github+json", "X-GitHub-Api-Version: 2022-11-28",
+                                       "User-Agent: " UPDATE_USER_AGENT, nullptr};
 
     LOG_INFO("Checking for updates...");
 
     /* Download release information */
     join_paths(release_file, g_yawl_dir, RELEASE_INFO_FILE);
-    result = download_github_release_info(release_file);
+    result = download_file(GITHUB_API_RELEASES_URL, release_file, headers);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to download release information");
         free(release_file);

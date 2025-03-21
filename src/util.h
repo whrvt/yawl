@@ -45,7 +45,7 @@
 
 #define STRING_AFTER_PREFIX(string, prefix) (string + (sizeof(prefix) - 1UL))
 
-void _append_sep_impl(char **result_ptr, const char *separator, int num_strings, ...);
+void _append_sep_impl(char *result_ptr[], const char *separator, int num_strings, ...);
 
 #define COUNT_JOIN_ARGS(...) (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *))
 
@@ -67,12 +67,12 @@ RESULT remove_dir(const char *path);
 
 /* Calculates a sha256sum for a file and puts it in `hash_str`
  * Returns RESULT_OK on success, error RESULT on failure */
-RESULT calculate_sha256(const char *file_path, char hash_str[static 65]);
+RESULT calculate_sha256(const char *file_path, char hash_str[65]);
 
 /* Find the hash for file_name (e.g. SteamLinuxRuntime_sniper.tar.xz) from a SHA256SUMS hash_url
  * (i.e. ...snapshots/latest-container-runtime-public-beta/SHA256SUMS)
  * Returns RESULT_OK on success, error RESULT on failure */
-RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, char hash_str[static 65]);
+RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, char hash_str[65]);
 
 /* Expands shell paths like ~ to their full equivalents (using wordexp)
  * Returns a newly allocated string that must be freed by the caller
@@ -87,7 +87,7 @@ RESULT extract_archive(const char *archive_path, const char *extract_path);
  * Returns RESULT_OK on success, error RESULT on failure
  * headers: nullptr-terminated array of strings for HTTP headers (can be nullptr)
  */
-RESULT download_file(const char *url, const char *output_path, char **headers);
+RESULT download_file(const char *url, const char *output_path, const char *headers[]);
 
 /* Extract the base name from a given executable path (allocates) */
 static inline char *get_base_name(const char *path) {

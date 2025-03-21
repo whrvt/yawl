@@ -23,20 +23,8 @@
 #include <string.h>
 #include <time.h>
 
-#ifdef __clang__
-#pragma clang diagnostic ignored "-Wextra-semi"
-#pragma clang diagnostic push
-#else
-#pragma GCC diagnostic ignored "-Wpedantic"
-#pragma GCC diagnostic push
-#endif
 #define G_LOG_DOMAIN "libnotify"
 #include "libnotify/notify.h"
-#ifdef __clang__
-#pragma clang diagnostic pop
-#else
-#pragma GCC diagnostic pop
-#endif
 
 #include "log.h"
 #include "util.h"
@@ -54,8 +42,8 @@ static gboolean notify_initialized = FALSE;
 #define COLOR_GREEN "\033[32m"
 #define COLOR_BLUE "\033[34m"
 
-static const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG"};
-static const char *const level_colors[] = {"\0", COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_BLUE};
+static constexpr const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG"};
+static constexpr const char *const level_colors[] = {"\0", COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_BLUE};
 
 /* Parse log level from string */
 static log_level_t parse_log_level(const char *level_str) {
