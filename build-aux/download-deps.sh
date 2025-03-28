@@ -18,6 +18,7 @@ GDK_PIXBUF_VERSION="2.42.12"
 LIBNOTIFY_VERSION="0.8.4"
 JSON_GLIB_VERSION="1.10.6"
 LIBARCHIVE_VERSION="3.7.7"
+LIBCAP_VERSION="2.27" # Newer versions have useless Go stuff
 
 # Parse arguments
 LIB="$1"
@@ -597,6 +598,45 @@ case "$LIB" in
                             -Db_staticpic=true build . 
         "${FLAGS_MESON[@]}" meson compile -C build && \
         "${FLAGS_MESON[@]}" meson install -C build || exit 1
+        ;;
+
+    libcap)
+        # Required for nsenter
+        if [ ! -d "libcap-$LIBCAP_VERSION" ]; then
+            echo "Downloading libcap-$LIBCAP_VERSION..."
+            download_file "https://web.git.kernel.org/pub/scm/libs/libcap/libcap.git/snapshot/libcap-$LIBCAP_VERSION.tar.gz" "libcap.tar.gz"
+            tar -xzf libcap.tar.gz
+            rm libcap.tar.gz
+        fi
+
+        cd "libcap-$LIBCAP_VERSION"
+
+        sed -i 's|-fPIC||g' Make.Rules
+        sed -i 's|^CC :=|CC ?=|g' Make.Rules
+        sed -i 's|CFLAGS := -O2 -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64|CFLAGS := $(CFLAGS) -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64|g' Make.Rules
+        sed -i 's|-Wl,-x -shared|-static|g' Make.Rules
+    cat >Makefile <<'EOF'
+topdir=$(shell pwd)
+include Make.Rules
+all install clean: %: %-here
+	$(MAKE) -C libcap libcap.a
+all-here:
+install-here:
+clean-here:
+	$(LOCALCLEAN)
+distclean: clean
+	$(DISTCLEAN)
+EOF
+        make prefix="$PREFIX" \
+            CC="$CC" \
+            LD="$CC" \
+            CXX="$CXX" \
+            CPPFLAGS="$CPPFLAGS" \
+            CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS" \
+            LDFLAGS="$LDFLAGS" -j"$JOBS" && \
+        cp libcap/libcap.a "$PREFIX/lib" && \
+        cp libcap/include/sys/capability.h "$PREFIX/include"
         ;;
 
     cacert)

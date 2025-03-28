@@ -135,5 +135,5 @@ const char *result_to_string(RESULT result) {
         return "System error";
     }
 
-    return "Unhandled result error";
+    return "Unhandled result code error";
 }

@@ -124,7 +124,7 @@ AC_SUBST([STRIP])
 AC_SUBST([AR])
 
 # Check for required headers
-AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h linux/limits.h])
+AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h linux/limits.h sys/vfs.h])
 
 if test "x$ac_cv_header_linux_mman_h" != "xyes"
 then
@@ -134,6 +134,11 @@ fi
 if test "x$ac_cv_header_linux_limits_h" != "xyes"
 then
     AC_MSG_ERROR([Could not find the linux/limits.h header])
+fi
+
+if test "x$ac_cv_header_sys_vfs_h" != "xyes"
+then
+    AC_MSG_ERROR([Could not find the sys/vfs.h header])
 fi
 
 # Download and build mimalloc (to replace the slow musl malloc)
@@ -259,6 +264,14 @@ if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/lib
     cp -r $deps_prefix/include/json-glib-1.0/ $build_prefix/include/
 fi
 
+# Download and build libcap (for nsenter functionality)
+if ! test -f "$build_prefix/lib/libcap.a"; then
+    AC_MSG_NOTICE([Building libcap])
+    sh build-aux/download-deps.sh libcap "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libcap])
+    cp $deps_prefix/lib/libcap.a $build_prefix/lib/
+    cp $deps_prefix/include/capability.h $build_prefix/include/
+fi
+
 # Now download the CA certificate bundle to embed and use with curl
 if ! test -f "$PWD/assets/external/cacert.pem"; then
     AC_MSG_NOTICE([Downloading CA certificate bundle for curl])
@@ -278,7 +291,7 @@ LIBARCHIVE_CPPFLAGS="-DLIBARCHIVE_STATIC"
 
 NON_GLIB_CPPFLAGS="$LIBARCHIVE_CPPFLAGS $CURL_CPPFLAGS -I$build_prefix/include"
 
-COMMON_DEP_LIBS="-lidn2 -lpsl -lunistring -lz -llzma -lzstd"
+COMMON_DEP_LIBS="-lcap -lidn2 -lpsl -lunistring -lz -llzma -lzstd"
 CURL_LIBS="-lcurl"
 LIBARCHIVE_LIBS="-larchive"
 OPENSSL_LIBS="-lssl -lcrypto"
@@ -307,7 +320,7 @@ CPPFLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS
 CXXFLAGS="-xc++ -std=gnu++23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing \
     -static -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection -fstack-protector-all \
     -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
-    -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wa,--noexecstack -Wl,-z,noexecstack \
+    -Wno-nullability-extension -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wa,--noexecstack -Wl,-z,noexecstack \
     -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
 CFLAGS="$CXXFLAGS"
 LDFLAGS="$CXXFLAGS -xnone"

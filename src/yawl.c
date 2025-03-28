@@ -3,23 +3,13 @@
  *
  * Copyright (C) 2025 William Horvath
  *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+ * SPDX-License-Identifier: GPL-2.0-only
+ * See the full license text in the repository LICENSE file.
  */
 
 #include "config.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <getopt.h>
 #include <stdio.h>
@@ -27,6 +17,9 @@
 
 #include "apparmor.h"
 #include "log.h"
+#include "macros.h"
+#include "nsenter.h"
+#include "result.h"
 #include "update.h"
 #include "util.h"
 
@@ -42,22 +35,24 @@
 
 const char *g_yawl_dir;
 const char *g_config_dir;
+const char *g_argv0;
 
 struct options {
-    int version;        /* 1 = return a version string and exit */
-    int verify;         /* 0 = no verification (default), 1 = verify */
-    int reinstall;      /* 0 = don't reinstall unless needed, 1 = force reinstall */
-    int help;           /* 0 = don't show help, 1 = show help and exit */
-    int check;          /* 1 = check for updates */
-    int update;         /* 1 = check for and apply updates */
-    char *exec_path;    /* Path to the executable to run (default: /usr/bin/wine) */
-    char *make_wrapper; /* Name of the wrapper to create (nullptr = don't create) */
-    char *config;       /* Name of the config to use (nullptr = use argv[0] or default) */
-    char *wineserver;   /* Path to the wineserver binary (nullptr = don't create wineserver wrapper) */
+    int version;              /* 1 = return a version string and exit */
+    int verify;               /* 0 = no verification (default), 1 = verify */
+    int reinstall;            /* 0 = don't reinstall unless needed, 1 = force reinstall */
+    int help;                 /* 0 = don't show help, 1 = show help and exit */
+    int check;                /* 1 = check for updates */
+    int update;               /* 1 = check for and apply updates */
+    unsigned long enterpid;   /* The pid of the namespace we want to run a command in */
+    const char *exec_path;    /* Path to the executable to run (default: /usr/bin/wine) */
+    const char *make_wrapper; /* Name of the wrapper to create (nullptr = don't create) */
+    const char *config;       /* Name of the config to use (nullptr = use argv[0] or default) */
+    const char *wineserver;   /* Path to the wineserver binary (nullptr = don't create wineserver wrapper) */
 };
 
-static void print_usage(void) {
-    printf("Usage: " PROG_NAME " [args_for_executable...]\n");
+static void print_usage() {
+    printf("Usage: %s [args_for_executable...]\n", g_argv0);
     printf("\n");
     printf("Environment variables:\n");
     printf("  YAWL_VERBS       Semicolon-separated list of verbs to control " PROG_NAME " behavior:\n");
@@ -74,14 +69,13 @@ static void print_usage(void) {
     printf("                   - 'make_wrapper=NAME' Create a wrapper configuration and symlink\n");
     printf("                   - 'config=NAME' Use a specific configuration file\n");
     printf("                   - 'wineserver=PATH' Set the wineserver executable path when creating a wrapper\n");
-    printf(
-        "                   Example: "
-        "YAWL_VERBS=\"make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver\" " PROG_NAME
-        "\n");
-    printf("                   Example: YAWL_VERBS=\"verify;reinstall\" " PROG_NAME " winecfg\n");
-    printf("                   Example: YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" " PROG_NAME " winecfg\n");
-    printf("                   Example: YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" " PROG_NAME
-           "\n\n");
+    printf("                   Example: "
+           "YAWL_VERBS=\"make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver\" %s\n",
+           g_argv0);
+    printf("                   Example: YAWL_VERBS=\"verify;reinstall\" %s winecfg\n", g_argv0);
+    printf("                   Example: YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" %s winecfg\n", g_argv0);
+    printf("                   Example: YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" %s\n\n",
+           g_argv0);
     printf("  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/" PROG_NAME
            " or $HOME/.local/share/" PROG_NAME "\n");
     printf(
@@ -100,8 +94,8 @@ static void print_usage(void) {
 }
 
 /* Parse a single option string and update the options structure */
-static RESULT parse_option(const char *option, struct options *opts) {
-    if (!option || !opts || !option[0])
+static RESULT parse_option(nonnull_charp option, struct options *opts) {
+    if (!opts || !option[0])
         return RESULT_OK; /* Skip empty options, not an error */
 
     if (LCSTRING_EQUALS(option, "version")) {
@@ -116,19 +110,21 @@ static RESULT parse_option(const char *option, struct options *opts) {
         opts->check = 1;
     } else if (LCSTRING_EQUALS(option, "update")) {
         opts->update = 1;
+    } else if (LCSTRING_PREFIX(option, "enter=")) {
+        opts->enterpid = str2unum(STRING_AFTER_PREFIX(option, "enter="), 10);
+        if (!opts->enterpid && errno)
+            return MAKE_RESULT(SEV_ERROR, CAT_CONFIG, E_PARSE_ERROR);
+        else
+            opts->enterpid = 1; /* sentinel value for enter=0 (run nsenter with arbitrary args) */
     } else if (LCSTRING_PREFIX(option, "exec=")) {
-        free(opts->exec_path);
         opts->exec_path = expand_path(STRING_AFTER_PREFIX(option, "exec="));
         if (!opts->exec_path)
             opts->exec_path = strdup(DEFAULT_EXEC_PATH);
     } else if (LCSTRING_PREFIX(option, "make_wrapper=")) {
-        free(opts->make_wrapper);
         opts->make_wrapper = strdup(STRING_AFTER_PREFIX(option, "make_wrapper="));
     } else if (LCSTRING_PREFIX(option, "config=")) {
-        free(opts->config);
         opts->config = strdup(STRING_AFTER_PREFIX(option, "config="));
     } else if (LCSTRING_PREFIX(option, "wineserver=")) {
-        free(opts->wineserver);
         opts->wineserver = expand_path(STRING_AFTER_PREFIX(option, "wineserver="));
     } else {
         return MAKE_RESULT(SEV_WARNING, CAT_CONFIG, E_UNKNOWN); /* Unknown option */
@@ -142,7 +138,7 @@ static RESULT parse_env_options(struct options *opts) {
     if (!verbs)
         return RESULT_OK;
 
-    char *verbs_copy = strdup(verbs);
+    autofree char *verbs_copy = strdup(verbs);
     char *token = strtok(verbs_copy, ";");
     RESULT result = RESULT_OK;
 
@@ -150,7 +146,6 @@ static RESULT parse_env_options(struct options *opts) {
         result = parse_option(token, opts);
         if (FAILED(result)) {
             if (RESULT_SEVERITY(result) > SEV_WARNING) {
-                free(verbs_copy);
                 return result;
             }
             LOG_INFO("Unknown YAWL_VERBS token: %s", token);
@@ -162,7 +157,6 @@ static RESULT parse_env_options(struct options *opts) {
         token = strtok(nullptr, ";");
     }
 
-    free(verbs_copy);
     return RESULT_OK;
 }
 
@@ -206,9 +200,9 @@ static const char *setup_config_dir(void) {
     return result;
 }
 
-static RESULT verify_runtime(const char *runtime_path) {
-    char *versions_txt_path = nullptr;
-    char *pv_verify_path = nullptr;
+static RESULT verify_runtime(nonnull_charp runtime_path) {
+    autofree char *versions_txt_path = nullptr;
+    autofree char *pv_verify_path = nullptr;
     RESULT result;
 
     /* First, a lightweight check for VERSIONS.txt (same as the SLR shell script) */
@@ -216,31 +210,25 @@ static RESULT verify_runtime(const char *runtime_path) {
 
     if (access(versions_txt_path, F_OK) != 0) {
         LOG_ERROR("VERSIONS.txt not found. Runtime may be corrupt or incomplete.");
-        free(versions_txt_path);
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
     }
-    free(versions_txt_path);
 
     /* Check if pv-verify exists */
     join_paths(pv_verify_path, runtime_path, "pressure-vessel/bin/pv-verify");
 
     if (!is_exec_file(pv_verify_path)) {
         LOG_ERROR("pv-verify not found. Runtime may be corrupt or incomplete.");
-        free(pv_verify_path);
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
     }
 
-    char *cmd = nullptr;
+    autofree char *cmd = nullptr;
     append_sep(cmd, " ", pv_verify_path, "--quiet");
 
-    char *old_cwd = getcwd(nullptr, 0);
+    autofree char *old_cwd = getcwd(nullptr, 0);
 
     if (chdir(runtime_path) != 0) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to change to runtime directory");
-        free(old_cwd);
-        free(pv_verify_path);
-        free(cmd);
         return result;
     }
 
@@ -251,26 +239,19 @@ static RESULT verify_runtime(const char *runtime_path) {
     if (chdir(old_cwd) != 0) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to restore directory");
-        free(old_cwd);
-        free(pv_verify_path);
-        free(cmd);
         return result;
     }
-    free(old_cwd);
-    free(cmd);
 
     if (cmd_ret != 0) {
         LOG_ERROR("pv-verify reported verification errors (exit code %d).", WEXITSTATUS(cmd_ret));
-        free(pv_verify_path);
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_INVALID_ARG);
     }
 
-    char *entry_point = nullptr;
+    autofree char *entry_point = nullptr;
     join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
 
     if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
-        free(entry_point);
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
     }
 
@@ -282,12 +263,10 @@ static RESULT verify_runtime(const char *runtime_path) {
     }
 
     LOG_INFO("Runtime verification completed successfully.");
-    free(pv_verify_path);
-    free(entry_point);
     return RESULT_OK;
 }
 
-static RESULT verify_slr_hash(const char *archive_path, const char *hash_url) {
+static RESULT verify_slr_hash(nonnull_charp archive_path, nonnull_charp hash_url) {
     char expected_hash[65] = {};
     char actual_hash[65] = {};
     RESULT result;
@@ -314,7 +293,8 @@ static RESULT setup_runtime(const struct options *opts) {
     /* Reinstall obviously implies verify */
     RESULT ret = RESULT_OK;
     int install = opts->reinstall, verify = (opts->verify || opts->reinstall);
-    char *archive_path = nullptr, *runtime_path = nullptr;
+    autofree char *archive_path = nullptr;
+    autofree char *runtime_path = nullptr;
     struct stat st;
 
     join_paths(archive_path, g_yawl_dir, RUNTIME_ARCHIVE_NAME);
@@ -402,13 +382,10 @@ static RESULT setup_runtime(const struct options *opts) {
         ret = success;
     }
 
-    free(archive_path);
-    free(runtime_path);
-
     return ret;
 }
 
-static char *get_top_libdir(const char *exec_path) {
+static char *get_top_libdir(nonnull_charp exec_path) {
     char *dirname = strdup(exec_path);
 
     char *last_slash = strrchr(dirname, '/');
@@ -425,8 +402,8 @@ static char *get_top_libdir(const char *exec_path) {
     return dirname;
 }
 
-static char *build_library_paths(const char *exec_path) {
-    char *top_libdir = get_top_libdir(exec_path);
+static char *build_library_paths(nonnull_charp exec_path) {
+    autofree char *top_libdir = nullptr;
     char *result = nullptr;
     struct stat st;
 
@@ -434,11 +411,12 @@ static char *build_library_paths(const char *exec_path) {
     if (orig_path)
         result = strdup(orig_path);
 
+    top_libdir = get_top_libdir(exec_path);
+
     /* append_sep with "" as separator just acts like concatenation */
     if (top_libdir && stat(top_libdir, &st) == 0 && S_ISDIR(st.st_mode))
         append_sep(result, "", orig_path ? ":" : "", top_libdir, "/lib64:", top_libdir, "/lib32:", top_libdir, "/lib");
 
-    free(top_libdir);
     return result;
 }
 
@@ -464,31 +442,9 @@ static char *build_mesa_paths(void) {
     return result;
 }
 
-/* Config name to load, either from YAWL_VERBS="config=" or from argv[0] (e.g., "yawl-foo-bar" -> "foo-bar")
- * (allocates) */
-static char *get_config_name(const char *argv0, const struct options *opts) {
-    if (opts->config) /* Already allocated in parse_option */
-        return opts->config;
-
-    char *base_name = get_base_name(argv0);
-    if (!base_name)
-        return nullptr;
-
-    char *dash = strchr(base_name, '-');
-    if (!dash) {
-        free(base_name);
-        return nullptr;
-    }
-
-    char *config_name = strdup(dash + 1);
-    free(base_name);
-
-    return config_name;
-}
-
 /* Create a configuration file with the current options */
-static RESULT create_config_file(const char *config_name, const struct options *opts) {
-    char *config_path = nullptr;
+static RESULT create_config_file(nonnull_charp config_name, const struct options *opts) {
+    autofree char *config_path = nullptr;
     FILE *fp = nullptr;
     RESULT result = RESULT_OK;
 
@@ -501,7 +457,6 @@ static RESULT create_config_file(const char *config_name, const struct options *
     if (!fp) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to create config file");
-        free(config_path);
         return result;
     }
 
@@ -512,17 +467,15 @@ static RESULT create_config_file(const char *config_name, const struct options *
 
     fclose(fp);
     LOG_INFO("Created configuration file: %s", config_path);
-    free(config_path);
 
     return result;
 }
 
 /* Create a symlink to the current binary with the suffix */
-static RESULT create_symlink(const char *config_name) {
-    char *exec_path = nullptr;
-    char *exec_dir = nullptr;
-    char *base_name = nullptr;
-    char *symlink_path = nullptr;
+static RESULT create_symlink(nonnull_charp config_name) {
+    autofree char *exec_path = nullptr;
+    autofree char *exec_dir = nullptr;
+    autofree char *symlink_path = nullptr;
     RESULT result = RESULT_OK;
 
     /* Get the full path to the current executable */
@@ -533,9 +486,6 @@ static RESULT create_symlink(const char *config_name) {
         return result;
     }
 
-    /* Extract the base name and directory */
-    base_name = get_base_name(exec_path);
-
     /* Create a copy of exec_path to extract the directory */
     exec_dir = strdup(exec_path);
 
@@ -544,7 +494,7 @@ static RESULT create_symlink(const char *config_name) {
         *last_slash = '\0';
 
     /* Build the symlink path */
-    join_paths(symlink_path, exec_dir, base_name);
+    join_paths(symlink_path, exec_dir, g_argv0);
     append_sep(symlink_path, "-", config_name);
 
     if (access(symlink_path, F_OK) == 0) {
@@ -560,64 +510,44 @@ static RESULT create_symlink(const char *config_name) {
         LOG_INFO("Created symlink: %s -> %s", symlink_path, exec_path);
     }
 
-    free(exec_path);
-    free(exec_dir);
-    free(base_name);
-    free(symlink_path);
-
     return result;
 }
 
 /* Create a wineserver wrapper configuration and symlink. Useful for winetricks, as it can find wineserver from
  * `${WINE}server`. */
-static RESULT create_wineserver_wrapper(const char *config_name, const char *wineserver_path) {
-    struct options server_opts = {};
-    char *server_config_name = nullptr, *exec_path = nullptr, *base_name = nullptr;
+static RESULT create_wineserver_wrapper(nonnull_charp base_name, nonnull_charp wineserver_path) {
+    autofree char *server_config_name = nullptr;
+    struct options wineserver_opts = {};
+    wineserver_opts.exec_path = wineserver_path;
     RESULT result = RESULT_OK;
 
-    /* Initialize the exec_path */
-    server_opts.exec_path = strdup(wineserver_path);
-
     /* Create the config name: append "server" to the base name */
-    server_config_name = strdup(config_name);
+    server_config_name = strdup(base_name);
     append_sep(server_config_name, "", "server");
 
-    result = create_config_file(server_config_name, &server_opts);
-    if (FAILED(result))
-        goto ws_done;
+    result = create_config_file(server_config_name, &wineserver_opts);
+    RETURN_IF_FAILED(result);
 
     result = create_symlink(server_config_name);
-    if (FAILED(result))
-        goto ws_done;
+    RETURN_IF_FAILED(result);
 
-    exec_path = realpath("/proc/self/exe", nullptr);
-    if (!exec_path) {
-        LOG_INFO("Created wineserver wrapper: <basename>-%s", server_config_name);
-    } else {
-        base_name = get_base_name(exec_path);
-        free(exec_path);
-        LOG_INFO("Created wineserver wrapper: %s-%s", base_name, server_config_name);
-        free(base_name);
-    }
+    LOG_INFO("Created wineserver wrapper: %s-%s", g_argv0, server_config_name);
 
-ws_done:
-    free(server_opts.exec_path);
-    free(server_config_name);
     return result;
 }
 
 /* Create a wrapper configuration and symlink */
-static RESULT create_wrapper(const char *config_name, const struct options *opts) {
+static RESULT create_wrapper(nonnull_charp wrapper_name, const struct options *opts) {
     RESULT result;
 
-    result = create_config_file(config_name, opts);
+    result = create_config_file(wrapper_name, opts);
     RETURN_IF_FAILED(result);
 
-    result = create_symlink(config_name);
+    result = create_symlink(wrapper_name);
     RETURN_IF_FAILED(result);
 
     if (opts->wineserver) {
-        result = create_wineserver_wrapper(config_name, opts->wineserver);
+        result = create_wineserver_wrapper(wrapper_name, opts->wineserver);
         if (FAILED(result))
             LOG_WARNING("Failed to create wineserver wrapper. Continuing with main wrapper only.");
     }
@@ -625,10 +555,26 @@ static RESULT create_wrapper(const char *config_name, const struct options *opts
     return RESULT_OK;
 }
 
+/* Find the config to load, prioritizing YAWL_VERBS 'config=' over symlink name
+ * Does not allocate, returns a pointer to the g_argv after '-' or the opts.config verb */
+static inline const char *get_config_name(const struct options *opts) {
+    static const char *wrapper_name = nullptr;
+    if (opts->config) {
+        wrapper_name = opts->config;
+        return wrapper_name;
+    }
+
+    const char *temp = strchr(g_argv0, '-');
+    if (temp)
+        wrapper_name = temp + 1;
+
+    return wrapper_name;
+}
+
 /* Load a configuration from a file, overrides opts passed in from env var */
-static RESULT load_config(const char *config_name, struct options *opts) {
-    char *config_path = nullptr;
-    FILE *fp = nullptr;
+static RESULT load_config(nonnull_charp config_name, struct options *opts) {
+    autofree char *config_path = nullptr;
+    autoclose FILE *fp = nullptr;
     char line[BUFFER_SIZE];
     RESULT result = RESULT_OK;
 
@@ -646,7 +592,6 @@ static RESULT load_config(const char *config_name, struct options *opts) {
         /* Check if the file exists */
         if (access(config_path, F_OK) != 0) {
             LOG_ERROR("Config file not found: %s", config_path);
-            free(config_path);
             return MAKE_RESULT(SEV_ERROR, CAT_CONFIG, E_NOT_FOUND);
         }
     }
@@ -656,7 +601,6 @@ static RESULT load_config(const char *config_name, struct options *opts) {
     if (!fp) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to open config file");
-        free(config_path);
         return result;
     }
 
@@ -681,10 +625,7 @@ static RESULT load_config(const char *config_name, struct options *opts) {
         }
     }
 
-    fclose(fp);
     LOG_DEBUG("Loaded configuration from: %s", config_path);
-    free(config_path);
-
     return result;
 }
 
@@ -695,6 +636,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "This program should not be run as root. Exiting.\n");
         return 1;
     }
+
+    if (!(g_argv0 = get_base_name(argv[0])))
+        g_argv0 = PROG_NAME;
 
     /* Setup global directories first */
     if (!(g_yawl_dir = setup_prog_dir())) {
@@ -757,6 +701,7 @@ int main(int argc, char *argv[]) {
 
     /* Handle make_wrapper option */
     if (opts.make_wrapper) {
+        LOG_DEBUG("Making wrapper %s", opts.make_wrapper);
         if (opts.exec_path && STRING_EQUALS(opts.exec_path, DEFAULT_EXEC_PATH)) {
             LOG_WARNING("You need to pass an exec= verb to create a wrapper. Use YAWL_VERBS=\"help\" for examples.");
             return 0;
@@ -766,23 +711,26 @@ int main(int argc, char *argv[]) {
 
         /* Exit after creating the wrapper if no other arguments */
         if (argc <= 1) {
-            LOG_INFO("Wrapper created successfully. Use %s-%s to run with this configuration.", get_base_name(argv[0]),
+            LOG_INFO("Wrapper created successfully. Use %s-%s to run with this configuration.", g_argv0,
                      opts.make_wrapper);
             return 0;
         }
     }
 
-    char *config_name = get_config_name(argv[0], &opts);
-
+    const char *config_name = get_config_name(&opts);
     if (config_name) {
         result = load_config(config_name, &opts);
         if (FAILED(result))
             LOG_WARNING("Failed to load configuration. Continuing with defaults.");
     }
-    free(config_name);
 
     result = setup_runtime(&opts);
     LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed setting up the runtime");
+
+    if (opts.enterpid) {
+        do_nsenter(argc, argv, opts.enterpid);
+        return 1;
+    }
 
     if (!is_exec_file(opts.exec_path)) {
         LOG_ERROR("Executable not found or not executable: %s", opts.exec_path);
@@ -800,7 +748,7 @@ int main(int argc, char *argv[]) {
     new_argv[0] = entry_point;
     new_argv[1] = (char *)"--verb=waitforexitandrun";
     new_argv[2] = (char *)"--";
-    new_argv[3] = opts.exec_path;
+    new_argv[3] = (char *)opts.exec_path;
 
     for (int i = 1; i < argc; i++) {
         new_argv[i + 3] = argv[i];

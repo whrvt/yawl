@@ -28,7 +28,7 @@
 #define G_LOG_DOMAIN "json-glib"
 #include "json-glib/json-glib.h"
 
-#include "cleanup.h"
+#include "macros.h"
 #include "config.h"
 #include "log.h"
 #include "update.h"
@@ -44,7 +44,7 @@
 #define BACKUP_SUFFIX ".bak"
 
 /* json-glib specific cleanup */
-static inline void cleanup_json_parser(void *p) {
+[[gnu::always_inline]] static inline void cleanup_json_parser(void *p) {
     JsonParser **parser = (JsonParser **)p;
     if (parser && *parser) {
         g_object_unref(*parser);
@@ -60,8 +60,8 @@ static inline void cleanup_json_parser(void *p) {
     }
 }
 
-#define AUTO_JSON_UNREF [[gnu::cleanup(cleanup_json_parser)]]
-#define AUTO_GERROR_FREE [[gnu::cleanup(cleanup_gerror)]]
+#define autounref_json [[gnu::cleanup(cleanup_json_parser)]]
+#define autofree_gerror [[gnu::cleanup(cleanup_gerror)]]
 
 /* Parse release info and check if an update is available */
 static RESULT parse_release_info(const char *json_path, char *tag_name[], char *download_url[]) {
@@ -71,8 +71,8 @@ static RESULT parse_release_info(const char *json_path, char *tag_name[], char *
     *tag_name = nullptr;
     *download_url = nullptr;
 
-    AUTO_JSON_UNREF JsonParser *parser = json_parser_new();
-    AUTO_GERROR_FREE GError *error = nullptr;
+    autounref_json JsonParser *parser = json_parser_new();
+    autofree_gerror GError *error = nullptr;
 
     /* Load and parse the JSON file */
     json_parser_load_from_file(parser, json_path, &error);
@@ -128,7 +128,7 @@ static RESULT make_executable(const char *file_path) {
 }
 
 static RESULT copy_file_raw(const char *source, const char *destination, int use_temp) {
-    AUTO_FREE char *actual_dest = nullptr;
+    autofree char *actual_dest = nullptr;
 
     if (use_temp)
         append_sep(actual_dest, "", destination, ".tmp");
@@ -137,12 +137,12 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
 
     /* Open source file (scoped) */
     {
-        AUTO_FCLOSE FILE *src = fopen(source, "rb");
+        autoclose FILE *src = fopen(source, "rb");
         if (!src)
             return result_from_errno();
 
         /* Open destination file in its own scope */
-        AUTO_FCLOSE FILE *dst = fopen(actual_dest, "wb");
+        autoclose FILE *dst = fopen(actual_dest, "wb");
         if (!dst)
             return result_from_errno();
 
@@ -199,7 +199,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
 static RESULT copy_file(const char *source, const char *destination) {
     RESULT result = RESULT_OK;
 
-    AUTO_FREE char *backup_file = nullptr;
+    autofree char *backup_file = nullptr;
     join_paths(backup_file, g_yawl_dir, PROG_NAME BACKUP_SUFFIX);
 
     if (access(destination, F_OK) == 0) {
@@ -277,7 +277,7 @@ static RESULT replace_binary(const char *new_binary, const char *current_binary)
             LOG_DEBUG_RESULT(result_from_errno(), "renameat2 failed");
 
         /* Fallback method: Create a backup and use rename */
-        AUTO_FREE char *backup_file = nullptr;
+        autofree char *backup_file = nullptr;
         append_sep(backup_file, "", current_binary, BACKUP_SUFFIX);
 
         /* Step 1: Backup the current binary */
@@ -320,9 +320,9 @@ static int parse_version(const char *version) {
 }
 
 static RESULT check_for_updates(void) {
-    AUTO_FREE char *release_file = nullptr;
-    AUTO_FREE char *tag_name = nullptr;
-    AUTO_FREE char *download_url = nullptr;
+    autofree char *release_file = nullptr;
+    autofree char *tag_name = nullptr;
+    autofree char *download_url = nullptr;
     RESULT result;
     const char *headers[] = {"Accept: application/vnd.github+json", "X-GitHub-Api-Version: 2022-11-28",
                              "User-Agent: " UPDATE_USER_AGENT, nullptr};
@@ -357,7 +357,7 @@ static RESULT check_for_updates(void) {
     LOG_INFO("Update available: %s -> %s", "v" VERSION, tag_name);
 
     /* Save download URL for later use */
-    AUTO_FCLOSE FILE *fp = fopen(release_file, "w");
+    autoclose FILE *fp = fopen(release_file, "w");
     if (fp)
         fprintf(fp, "%s", download_url);
 
@@ -365,17 +365,17 @@ static RESULT check_for_updates(void) {
 }
 
 static RESULT perform_update(void) {
-    AUTO_UNLINK_FREE char *release_file = nullptr;
-    AUTO_UNLINK_FREE char *temp_binary = nullptr;
-    AUTO_FREE char *self_path = nullptr;
-    AUTO_FREE char *download_dir = nullptr;
+    autofree_del char *release_file = nullptr;
+    autofree_del char *temp_binary = nullptr;
+    autofree char *self_path = nullptr;
+    autofree char *download_dir = nullptr;
     char download_url[1024] = {};
     RESULT result;
 
     /* Get the download URL from the saved file */
     join_paths(release_file, g_yawl_dir, RELEASE_INFO_FILE);
 
-    AUTO_FCLOSE FILE *fp = fopen(release_file, "r");
+    autoclose FILE *fp = fopen(release_file, "r");
     if (!fp)
         return result_from_errno();
 
@@ -389,7 +389,7 @@ static RESULT perform_update(void) {
 
     /* Try to use same directory as executable (scoped) */
     {
-        AUTO_FREE char *temp_dir = strdup(self_path);
+        autofree char *temp_dir = strdup(self_path);
         if (temp_dir) {
             char *last_slash = strrchr(temp_dir, '/');
             if (last_slash) {

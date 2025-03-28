@@ -1,5 +1,5 @@
 /*
- * Common auto-cleanup macros/routines
+ * Common miscellaneous macros/routines
  *
  * Copyright (C) 2025 William Horvath
  *
@@ -26,11 +26,9 @@
 
 /* Cleanup function for pointers allocated with malloc/strdup/etc. */
 [[gnu::always_inline]] static inline void cleanup_pointer(void *p) {
-    void **ptr = (void **)p;
-    if (ptr && *ptr) {
-        free(*ptr);
-        *ptr = nullptr;
-    }
+    void **pp = (void**)p;
+    free(*pp);
+    *pp = nullptr;
 }
 
 /* Cleanup function for FILE pointers */
@@ -45,13 +43,14 @@
 /* Cleanup function that unlinks a file and then frees the path */
 [[gnu::always_inline]] static inline void cleanup_unlink_and_free(void *p) {
     char **path = (char **)p;
-    if (path && *path) {
+    if (path && *path)
         unlink(*path);
-        free(*path);
-        *path = nullptr;
-    }
+    free(*path);
+    *path = nullptr;
 }
 
-#define AUTO_FREE [[gnu::cleanup(cleanup_pointer)]]
-#define AUTO_FCLOSE [[gnu::cleanup(cleanup_file)]]
-#define AUTO_UNLINK_FREE [[gnu::cleanup(cleanup_unlink_and_free)]]
+#define autofree [[gnu::cleanup(cleanup_pointer)]]
+#define autoclose [[gnu::cleanup(cleanup_file)]]
+#define autofree_del [[gnu::cleanup(cleanup_unlink_and_free)]]
+
+#define nonnull_charp [[gnu::nonnull]] const char *_Nonnull

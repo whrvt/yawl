@@ -39,3 +39,5 @@ engines-3/
 *~
 *.swp
 .vscode/
+
+garbage/
