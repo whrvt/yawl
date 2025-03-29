@@ -16,7 +16,7 @@ permissions:
 
 
 concurrency:
-  group: ${{ github.workflow }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref_type }}
   cancel-in-progress: true
 
 
@@ -87,7 +87,12 @@ jobs:
     - uses: actions/download-artifact@v4
       with:
         name: yawl-${{ needs.version.outputs.full_desc }}
-        path: yawl-${{ github.ref_name }}
+        path: yawl-${{ needs.version.outputs.full_desc }}
+    - name: Prepare
+      id: prepare
+      shell: bash
+      run: |
+        git fetch origin +refs/tags/*:refs/tags/*
     - name: Create
       id: create
       shell: bash
@@ -102,6 +107,7 @@ jobs:
         --notes-from-tag
         --verify-tag
     - name: Upload
+      id: upload
       shell: bash
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -110,5 +116,5 @@ jobs:
         --repo "${{ github.server_url }}/${{ github.repository }}"
         release upload
         ${{ github.ref_name }}
-        yawl-${{ github.ref_name }}
+        yawl-${{ needs.version.outputs.full_desc }}/yawl
         --clobber
