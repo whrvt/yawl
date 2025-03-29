@@ -8,9 +8,11 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "apparmor.h"
 #include "log.h"
+#include "macros.h"
 #include "util.h"
 
 #define APPARMOR_DIR "/etc/apparmor.d"
@@ -19,10 +21,10 @@
 
 /* Test if the container works by running a simple command inside it */
 static RESULT test_container(const char *entry_point) {
-    char *test_cmd = nullptr;
-    char *stdout_file = nullptr;
-    char *stderr_file = nullptr;
-    FILE *stderr_fp = nullptr;
+    autofree char *test_cmd = nullptr;
+    autofree_del char *stdout_file = nullptr;
+    autofree_del char *stderr_file = nullptr;
+    autoclose FILE *stderr_fp = nullptr;
     char error_buf[BUFFER_SIZE] = {};
     int ret = 0;
     int apparmor_issue = 0;
@@ -48,16 +50,7 @@ static RESULT test_container(const char *entry_point) {
                 break;
             }
         }
-        fclose(stderr_fp);
     }
-
-    /* Clean up temporary files */
-    unlink(stdout_file);
-    unlink(stderr_file);
-
-    free(test_cmd);
-    free(stdout_file);
-    free(stderr_file);
 
     if (apparmor_issue) {
         LOG_DEBUG("AppArmor restriction detected");
@@ -82,7 +75,7 @@ static constexpr const unsigned char bwrap_userns_restrict[] = {
 };
 
 static RESULT write_temp_apparmor_profile(char *temp_path[]) {
-    FILE *fp = nullptr;
+    autoclose FILE *fp = nullptr;
 
     /* Create a temporary file in the yawl directory */
     join_paths(*temp_path, g_yawl_dir, APPARMOR_PROFILE_NAME ".tmp");
@@ -99,30 +92,26 @@ static RESULT write_temp_apparmor_profile(char *temp_path[]) {
     if (fwrite(bwrap_userns_restrict, 1, sizeof(bwrap_userns_restrict), fp) != sizeof(bwrap_userns_restrict)) {
         RESULT result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to write AppArmor profile data");
-        fclose(fp);
         unlink(*temp_path);
         return result;
     }
 
-    fclose(fp);
     return RESULT_OK;
 }
 
 /* Install the AppArmor profile using pkexec */
 static RESULT install_apparmor_profile(void) {
+    autofree_del char *temp_profile_path = nullptr;
+    autofree char *install_cmd = nullptr;
     struct stat st;
-    char *temp_profile_path = nullptr;
-    char *install_cmd = nullptr;
     int ret = 0;
     RESULT result = RESULT_OK;
 
     /* Write the profile to a temporary file */
     if (stat(APPARMOR_PROFILE_PATH, &st) != 0) {
         result = write_temp_apparmor_profile(&temp_profile_path);
-        if (FAILED(result)) {
-            free(temp_profile_path);
+        if (FAILED(result))
             return result;
-        }
     }
 
     LOG_INFO("Installing AppArmor profile to enable container functionality...");
@@ -143,10 +132,6 @@ static RESULT install_apparmor_profile(void) {
         result = MAKE_RESULT(SEV_ERROR, CAT_APPARMOR, E_ACCESS_DENIED);
     else
         result = RESULT_OK;
-
-    unlink(temp_profile_path);
-    free(temp_profile_path);
-    free(install_cmd);
 
     return result;
 }

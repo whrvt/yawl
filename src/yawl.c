@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/prctl.h>
 
 #include "apparmor.h"
