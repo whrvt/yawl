@@ -78,19 +78,6 @@ RESULT extract_archive(const char *archive_path, const char *extract_path);
  */
 RESULT download_file(const char *url, const char *output_path, const char *headers[]);
 
-/* Extract the base name from a given executable path (allocates) */
-static inline char *get_base_name(const char *path) {
-    char *path_copy = strdup(path);
-    if (!path_copy)
-        return nullptr;
-
-    char *last_slash = strrchr(path_copy, '/');
-    char *base_name = strdup(last_slash ? last_slash + 1 : path_copy);
-    free(path_copy);
-
-    return base_name;
-}
-
 /* Is the file a real executable file? */
 static inline bool is_exec_file(const char *path) {
     struct stat file_stat;

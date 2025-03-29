@@ -35,7 +35,7 @@
 
 const char *g_yawl_dir;
 const char *g_config_dir;
-const char *g_argv0;
+const char *g_argv0 = program_invocation_short_name;
 
 struct options {
     int version;              /* 1 = return a version string and exit */
@@ -641,9 +641,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!(g_argv0 = get_base_name(argv[0])))
-        g_argv0 = PROG_NAME;
-
     /* Setup global directories first */
     if (!(g_yawl_dir = setup_prog_dir())) {
         fprintf(stderr, "The program directory is unusable\n");
@@ -728,13 +725,13 @@ int main(int argc, char *argv[]) {
             LOG_WARNING("Failed to load configuration. Continuing with defaults.");
     }
 
-    result = setup_runtime(&opts);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed setting up the runtime");
-
     if (opts.enterpid) {
         do_nsenter(argc, argv, opts.enterpid);
         return 1;
     }
+
+    result = setup_runtime(&opts);
+    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed setting up the runtime");
 
     if (!is_exec_file(opts.exec_path)) {
         LOG_ERROR("Executable not found or not executable: %s", opts.exec_path);
