@@ -116,10 +116,6 @@ static RESULT parse_option(nonnull_charp option, struct options *opts) {
         opts->update = 1;
     } else if (LCSTRING_PREFIX(option, "enter=")) {
         opts->enterpid = str2unum(STRING_AFTER_PREFIX(option, "enter="), 10);
-        if (!opts->enterpid && errno)
-            return MAKE_RESULT(SEV_ERROR, CAT_CONFIG, E_PARSE_ERROR);
-        else
-            opts->enterpid = 1; /* sentinel value for enter=0 (run nsenter with arbitrary args) */
     } else if (LCSTRING_PREFIX(option, "exec=")) {
         opts->exec_path = expand_path(STRING_AFTER_PREFIX(option, "exec="));
         if (!opts->exec_path)

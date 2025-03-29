@@ -1169,7 +1169,7 @@ int do_nsenter(int argc, char *argv[], unsigned long pid_to_enter) {
     int pid_fd = -1;
 
     /* yawl: do --preserve-credentials --user --mount by default (unless `enter=1` is specified) */
-    if (pid_to_enter != 1) {
+    if (pid_to_enter > 1) {
         namespace_target_pid = pid_to_enter;
         preserve_cred = 1;
         enable_namespace(CLONE_NEWUSER, NULL);
