@@ -67,19 +67,23 @@ static void print_usage() {
     printf("                   - 'exec=PATH' Set the executable to run in the container (default: %s)\n",
            DEFAULT_EXEC_PATH);
     printf("                   - 'make_wrapper=NAME' Create a wrapper configuration and symlink\n");
-    printf("                   - 'config=NAME' Use a specific configuration file\n");
-    printf("                   - 'wineserver=PATH' Set the wineserver executable path when creating a wrapper\n");
-    printf("                   Example: "
+    printf("                   - 'config=NAME'       Use a specific configuration file\n");
+    printf("                   - 'wineserver=PATH'   Set the wineserver executable path when creating a wrapper\n");
+    printf("                   - 'enter=PID'         Run an executable in the same container as PID\n");
+    printf("\n");
+    printf("               Examples:\n");
+    printf("\n");
+    printf("                   "
            "YAWL_VERBS=\"make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver\" %s\n",
            g_argv0);
-    printf("                   Example: YAWL_VERBS=\"verify;reinstall\" %s winecfg\n", g_argv0);
-    printf("                   Example: YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" %s winecfg\n", g_argv0);
-    printf("                   Example: YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" %s\n\n",
-           g_argv0);
+    printf("                   YAWL_VERBS=\"verify;reinstall\" %s winecfg\n", g_argv0);
+    printf("                   YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" %s winecfg\n", g_argv0);
+    printf("                   YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" %s\n", g_argv0);
+    printf("                   YAWL_VERBS=\"enter=$(pgrep game.exe)\" %s cheatengine.exe\n", g_argv0);
+    printf("\n");
     printf("  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/" PROG_NAME
            " or $HOME/.local/share/" PROG_NAME "\n");
-    printf(
-        "                   Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher\" YAWL_VERBS=\"reinstall\" yawl\n");
+    printf("          Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher\" YAWL_VERBS=\"reinstall\" yawl\n");
     printf("\n");
     printf("  YAWL_LOG_LEVEL   Control the verbosity of the logging output. Valid values are:\n");
     printf("                   - 'none'     Turn off all logging\n");

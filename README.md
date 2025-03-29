@@ -2,11 +2,9 @@
 
 ## Building
 
-`./autogen.sh && ./configure` to set up the build files, then `make && make install`.
+`./autogen.sh && ./configure` to set up the build files/dependencies, then `make && make install`.
 
 This will output a static `yawl` binary in the `./dist/bin` directory, with the default `--prefix`.
-
-Also, the static link libraries (curl, zlib) are included, but can be rebuilt with `make clean && ./configure`. No guarantees.
 
 ## Running
 
@@ -27,12 +25,14 @@ Current useful environment variables:
   - `make_wrapper=NAME`: Create a configuration file and symlink for easy reuse
   - `config=NAME`: Use a specific named configuration (can be the full path or lone config name with/without .cfg)
     Configs are loaded from the default install/configs directory, if specified by symlink or without a full path.
+  - `enter=PID`: Run an executable in the same container as `PID` (like CheatEngine or a debugger)
 
   Examples:
 
   - `YAWL_VERBS="reinstall;verify" yawl winecfg`
   - `YAWL_VERBS="exec=/opt/wine/bin/wine64" yawl explorer.exe`
   - `YAWL_VERBS="exec=/opt/firefox/firefox" yawl`
+  - `YAWL_VERBS="enter=$(pgrep game.exe)" yawl cheatengine.exe`
 
 - `YAWL_INSTALL_DIR`: Override the default installation directory of `$XDG_DATA_HOME/yawl` or `$HOME/.local/share/yawl`
 
