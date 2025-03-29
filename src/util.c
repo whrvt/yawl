@@ -341,7 +341,7 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
 
     CURL *curl = curl_easy_init();
     if (!curl) {
-        RESULT result = MAKE_RESULT(SEV_ERROR, CAT_NETWORK, E_UNKNOWN);
+        RESULT result = MAKE_RESULT(SEV_ERROR, CAT_NETWORK, E_CURL);
         LOG_RESULT(LOG_ERROR, result, "Failed to initialize curl");
         return result;
     }
@@ -371,6 +371,7 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
 
     /* Copied from curl's `src/tool_operate.c`, use the embedded CA certificate data */
     struct curl_blob blob;
@@ -388,11 +389,8 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
 
     curl_easy_cleanup(curl);
 
-    if (res != CURLE_OK) {
-        RESULT result = MAKE_RESULT(SEV_ERROR, CAT_NETWORK, res);
-        LOG_RESULT(LOG_ERROR, result, "Download failed");
-        return result;
-    }
+    if (res != CURLE_OK)
+        return MAKE_RESULT(SEV_ERROR, CAT_NETWORK, res);
 
     return RESULT_OK;
 }

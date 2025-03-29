@@ -78,6 +78,7 @@ typedef int32_t RESULT;
 #define E_NOT_DIR 16
 #define E_UPDATE_AVAILABLE 100
 #define E_UPDATE_PERFORMED 101
+#define E_CURL 404
 
 /* Extract components from a RESULT */
 #define RESULT_SEVERITY(result) (((result) >> 27) & 0xF)

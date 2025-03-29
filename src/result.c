@@ -18,9 +18,11 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "result.h"
 #include <errno.h>
 #include <string.h>
+
+#include "curl/curl.h"
+#include "result.h"
 
 RESULT result_from_errno(void) {
     if (errno == 0)
@@ -105,10 +107,10 @@ const char *result_to_string(RESULT result) {
         }
     case CAT_NETWORK:
         switch (code) {
-        case E_NETWORK_ERROR:
-            return "Network error";
+        case E_CURL:
+            return "curl error";
         default:
-            return "Network error";
+            return curl_easy_strerror((CURLcode)code);
         }
     case CAT_RUNTIME:
         return "Runtime error";
