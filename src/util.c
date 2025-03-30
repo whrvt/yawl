@@ -335,6 +335,15 @@ static constexpr const unsigned char curl_ca_embed[] = {
 #embed "../assets/external/cacert.pem"
 };
 
+static int download_progress_callback(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t, curl_off_t) {
+    const char *filename = (const char *)clientp;
+    if (dltotal > 0) {
+        double percentage = ((double)dlnow / (double)dltotal) * 100.0;
+        log_progress(filename, percentage, (int)dlnow, (int)dltotal);
+    }
+    return 0; /* continue */
+}
+
 RESULT download_file(const char *url, const char *output_path, const char *headers[]) {
     if (!url || !output_path)
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
@@ -380,7 +389,22 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     blob.flags = CURL_BLOB_NOCOPY;
     curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &blob);
 
+    /* progress meter */
+    const char *filename = nullptr;
+    if (log_get_terminal_output()) {
+        filename = strrchr(output_path, '/');
+        if (filename)
+            filename++;
+        else
+            filename = output_path;
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, download_progress_callback);
+        curl_easy_setopt(curl, CURLOPT_XFERINFODATA, filename);
+    }
+
     CURLcode res = curl_easy_perform(curl);
+
+    log_progress_end();
 
     fclose(fp);
 

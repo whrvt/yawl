@@ -20,7 +20,7 @@
 
 static FILE *log_file = nullptr;
 static log_level_t current_log_level = LOG_INFO;
-static int terminal_output = 0;
+static bool terminal_output = false;
 static gboolean notify_initialized = FALSE;
 
 /* Color codes for terminal output */
@@ -30,9 +30,11 @@ static gboolean notify_initialized = FALSE;
 #define COLOR_YELLOW "\033[33m"
 #define COLOR_GREEN "\033[32m"
 #define COLOR_BLUE "\033[34m"
+#define COLOR_CYAN "\033[36m"
 
-static constexpr const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG"};
-static constexpr const char *const level_colors[] = {"\0", COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_BLUE};
+static constexpr const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG", "DOWNLOAD"};
+static constexpr const char *const level_colors[] = {"\0",        COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW,
+                                                     COLOR_GREEN, COLOR_BLUE,   COLOR_CYAN};
 
 /* Parse log level from string */
 static log_level_t parse_log_level(const char *level_str) {
@@ -56,7 +58,7 @@ static log_level_t parse_log_level(const char *level_str) {
 
 RESULT log_init(void) {
     char *log_file_path = nullptr;
-    terminal_output = isatty(STDOUT_FILENO);
+    terminal_output = !!isatty(STDOUT_FILENO);
 
     const char *log_level_env = getenv("YAWL_LOG_LEVEL");
     if (log_level_env)
@@ -119,6 +121,8 @@ void log_set_level(log_level_t level) {
 
 log_level_t log_get_level(void) { return current_log_level; }
 
+bool log_get_terminal_output(void) { return terminal_output; }
+
 void _log_message(log_level_t level, const char *file, int line, const char *format, ...) {
     if (level > current_log_level && level != LOG_SYSTEM)
         return;
@@ -130,7 +134,7 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         char *message;
 
         va_start(args, format);
-        if (vasprintf(&message, format, args)){}
+        vasprintf(&message, format, args);
         va_end(args);
 
         notif = notify_notification_new(PROG_NAME, message, "dialog-information");
@@ -167,7 +171,7 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         fprintf(output, "\n");
     }
 
-    if (log_file && level != LOG_SYSTEM) {
+    if (log_file && level != LOG_SYSTEM && level != LOG_PROGRESS) {
         /* Get just the filename without the path */
         const char *filename = strrchr(file, '/');
         if (filename)
@@ -207,5 +211,62 @@ void _log_result(log_level_t level, const char *file, int line, RESULT result, c
 
         _log_message(LOG_DEBUG, file, line, "  Details: Severity=%d, Category=%d, Code=0x%04X", severity, category,
                      code);
+    }
+}
+
+static time_t last_progress_update = 0;
+
+/* Progress printer for curl downloads */
+void log_progress(const char *operation, double percentage, int bytes_done, int bytes_total) {
+    if (!terminal_output)
+        return;
+
+    /* Limit update frequency to 1hz */
+    time_t now = time(nullptr);
+    if (now - last_progress_update < 1 && bytes_done < bytes_total && bytes_done > 0)
+        return;
+
+    last_progress_update = now;
+
+    /* Determine bar width (assuming 80 chars terminal width, leaving space for other info) */
+    int bar_width = 30;
+    int filled_width = (int)((percentage / 100.0) * bar_width);
+
+    fprintf(stdout, "\r%s[%s]%s ", level_colors[LOG_PROGRESS], level_strings[LOG_PROGRESS], COLOR_RESET);
+    fprintf(stdout, "%s [", operation);
+
+    for (int i = 0; i < bar_width; i++) {
+        if (i < filled_width)
+            fprintf(stdout, "=");
+        else if (i == filled_width)
+            fprintf(stdout, ">");
+        else
+            fprintf(stdout, " ");
+    }
+
+    if (bytes_total > 0) {
+        const char *units[] = {"B", "KB", "MB", "GB"};
+        int unit_idx = 0;
+        double size_now = bytes_done;
+        double size_total = bytes_total;
+
+        while (size_total >= 1024 && unit_idx < 3) {
+            size_now /= 1024;
+            size_total /= 1024;
+            unit_idx++;
+        }
+        fprintf(stdout, "] %3d%% (%.1f/%.1f %s)", (int)percentage, size_now, size_total, units[unit_idx]);
+    } else {
+        fprintf(stdout, "] %3d%%", (int)percentage);
+    }
+
+    fflush(stdout);
+}
+
+void log_progress_end(void) {
+    if (terminal_output && last_progress_update > 0) {
+        fprintf(stdout, "\n");
+        fflush(stdout);
+        last_progress_update = 0;
     }
 }
