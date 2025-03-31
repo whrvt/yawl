@@ -16,9 +16,17 @@ deps_prefix="$PWD/deps/prefix"
 build_prefix="$PWD/deps/yawl"
 mkdir -p "$deps_builddir" "$deps_prefix"/{lib,include} "$build_prefix/"{lib,include} "$PWD/dist/bin"
 
+export cch="$PWD/build-aux/muslconfig.cache"
+AC_SUBST([cch])
+
 # Make some wrapper shims for the dependencies to compile happily
 export PATH="${build_prefix}:${build_prefix}/zig:${PWD}/build-aux:${PATH}"
 AC_SUBST([PATH])
+
+AC_PROG_CC([musl-gcc])
+if test -z "$CC"; then
+    AC_MSG_ERROR([musl-gcc not found])
+fi
 
 if test -z $ZIG; then
     if ! test -x "${build_prefix}/zig/zig"; then
@@ -31,19 +39,16 @@ install -Dm755 /dev/stdin "$build_prefix"/zigcc <<EOF
 #!/usr/bin/env sh
 zig cc -target x86_64-linux-musl -Qunused-arguments "\$@"
 EOF
-AC_PROG_CC([zigcc])
-if test -z "$CC"; then
-    AC_MSG_ERROR([zig cc not found])
-fi
+export ZIGCC="zigcc"
+AC_SUBST([ZIGCC])
 
 install -Dm755 /dev/stdin "$build_prefix"/zigcpp <<EOF
 #!/usr/bin/env sh
 zig c++ -target x86_64-linux-musl -Qunused-arguments "\$@"
 EOF
+export ZIGCPP="zigcpp"
+AC_SUBST([ZIGCPP])
 AC_PROG_CXX([zigcpp])
-if test -z "$CXX"; then
-    AC_MSG_ERROR([zig c++ not found])
-fi
 
 rm -f "$build_prefix"/pkg-config # don't recurse infinitely :)
 
@@ -85,6 +90,8 @@ AC_DEFUN([AC_PROG_AR], [
 ])
 AC_PROG_AR
 
+AC_PROG_RANLIB
+
 AC_DEFUN([AX_COUNT_CPUS], [
     AC_CHECK_PROG([GETCONF], [getconf], [getconf])
     AS_IF([test -n "$GETCONF"],
@@ -98,18 +105,52 @@ AX_COUNT_CPUS
 export MAKEFLAGS="-j$CPU_COUNT"
 AC_SUBST([MAKEFLAGS])
 
+musl_compat="$deps_builddir/musl_temp"
+musl_compat2="$deps_builddir/musl_temp2"
+mkdir -p "$musl_compat" "$musl_compat2"/{linux,asm,asm-generic}
+
+AS_IF([test -n "$LIMITS_H"], [],
+    [LIMITS_H="/usr/include/linux/limits.h"]
+)
+AC_SUBST([LIMITS_H])
+AC_CHECK_FILE([$LIMITS_H], [],
+    [AC_MSG_ERROR([Could not find the linux/limits.h header (set LIMITS_H to specify one manually)])
+])
+cp $LIMITS_H "$musl_compat2"/linux/
+
+AS_IF([test -n "$TYPES_H"], [],
+    [TYPES_H="/usr/include/linux/types.h"]
+)
+AC_SUBST([TYPES_H])
+AC_CHECK_FILE([$TYPES_H], [],
+    [AC_MSG_ERROR([Could not find the linux/types.h header (set TYPES_H to specify one manually)])
+])
+cp $TYPES_H "$musl_compat2"/linux/
+
+AS_IF([test -n "$MUSL_INCDIR"], [],
+    [MUSL_INCDIR="/usr/lib/musl/include/sys"]
+)
+AC_SUBST([MUSL_INCDIR])
+AC_CHECK_FILE([$MUSL_INCDIR], [],
+    [AC_MSG_ERROR([Could not find the musl header files (set MUSL_INCDIR to specify a musl/include folder manually)])
+])
+AS_IF([test -L "$musl_compat/linux"],
+    [unlink "$musl_compat/linux"]
+)
+$LN_S "$MUSL_INCDIR" "$musl_compat/linux"
+
 export CC="$CC"
 export CXX="$CXX"
 export LD="$CC"
-shared_includes="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$deps_prefix/include" # It doesn't even compile without LTO, I tried...
-shared_flags="-Os -march=x86_64 -mtune=x86_64 -fwrapv -fno-strict-aliasing -flto=thin -ffat-lto-objects \
-    -ffunction-sections -fdata-sections -pthread -fcf-protection=full -fstack-clash-protection -fstack-protector-all -Wa,--noexecstack \
-    -static -fPIE -static-pie -static-libsan -L$deps_prefix/lib -Wl,--gc-sections -Wl,-z,noexecstack -Wl,-z,defs -Wl,-z,relro,-z,now \
-    -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+shared_includes="-D_GNU_SOURCE -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$deps_prefix/include"
+shared_flags="-fwrapv -fno-strict-aliasing -ffat-lto-objects \
+    -ffunction-sections -fdata-sections -pthread -fcf-protection=full -fstack-clash-protection -fstack-protector-all \
+    -static-libgcc -static -fPIC -fPIE -static-libasan -L$deps_prefix/lib -Wl,--gc-sections -Wl,-z,noexecstack \
+    -Wno-date-time -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
 export CPPFLAGS="$shared_includes"
-export CFLAGS="$shared_includes $shared_flags"
-export CXXFLAGS="$shared_includes $shared_flags"
-export LDFLAGS="$shared_flags"
+export CFLAGS="-I$musl_compat -I$musl_compat2 $shared_includes $shared_flags -Oz -flto=auto -march=x86-64 -mtune=generic"
+export CXXFLAGS="$shared_includes $shared_flags -Os -flto=thin -march=x86_64 -mtune=x86_64 -static-libstdc++"
+export LDFLAGS="$shared_flags -flto"
 export STRIP="$STRIP"
 export AR="$AR"
 
@@ -128,12 +169,12 @@ AC_CHECK_HEADERS([stdlib.h string.h unistd.h sys/stat.h linux/mman.h linux/limit
 
 if test "x$ac_cv_header_linux_mman_h" != "xyes"
 then
-    AC_MSG_ERROR([Could not find the linux/mman.h header])
+    AC_MSG_ERROR([Could not find the linux/mman.h header (MUSL_INCDIR=$MUSL_INCDIR is likely missing)])
 fi
 
 if test "x$ac_cv_header_linux_limits_h" != "xyes"
 then
-    AC_MSG_ERROR([Could not find the linux/limits.h header])
+    AC_MSG_ERROR([Could not find the linux/limits.h header (LIMITS_H=$LIMITS_H is likely missing)])
 fi
 
 if test "x$ac_cv_header_sys_vfs_h" != "xyes"
@@ -152,8 +193,8 @@ fi
 export CPPFLAGS="$CPPFLAGS -DHAVE_FREE_POSIX=1 -Drpl_free=free"
 export CFLAGS="$CFLAGS -DHAVE_FREE_POSIX=1 -Drpl_free=free"
 export CXXFLAGS="$CXXFLAGS -DHAVE_FREE_POSIX=1 -Drpl_free=free"
-export LDFLAGS="$LDFLAGS $build_prefix/lib/mimalloc.o"
-export LD="$LD $build_prefix/lib/mimalloc.o"
+export LDFLAGS="$LDFLAGS"
+export LD="$LD"
 AC_SUBST([CPPFLAGS])
 AC_SUBST([CFLAGS])
 AC_SUBST([CXXFLAGS])
@@ -267,9 +308,10 @@ fi
 # Download and build libcap (for nsenter functionality)
 if ! test -f "$build_prefix/lib/libcap.a"; then
     AC_MSG_NOTICE([Building libcap])
-    sh build-aux/download-deps.sh libcap "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libcap])
-    cp $deps_prefix/lib/libcap.a $build_prefix/lib/
-    cp $deps_prefix/include/capability.h $build_prefix/include/
+    { sh build-aux/download-deps.sh libcap "$deps_builddir" "$deps_prefix" &&
+    cp $deps_prefix/lib/libcap.a $build_prefix/lib/ &&
+    cp -r $deps_prefix/include/linux $build_prefix/include/ &&
+    cp $deps_prefix/include/capability.h $build_prefix/include; } || AC_MSG_ERROR([Failed to build libcap])
 fi
 
 # Now download the CA certificate bundle to embed and use with curl
@@ -310,17 +352,18 @@ LIBNOTIFY_LIBS="-lnotify"
 JSON_GLIB_LIBS="-ljson-glib-1.0"
 
 ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
+
 AC_LANG(C++)
-export CXX="$CXX"
-export CC="$CXX"
-export LD="$CXX"
+export CXX="$ZIGCPP"
+export CC="$ZIGCPP"
+export LD="$ZIGCPP"
 
 # Shared flags/libraries for all targets
-CPPFLAGS="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-CXXFLAGS="-xc++ -std=gnu++23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing \
-    -static -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection -fstack-protector-all \
-    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
-    -Wno-nullability-extension -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wa,--noexecstack -Wl,-z,noexecstack \
+CPPFLAGS="-D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
+CXXFLAGS="-xc++ --std=gnu++23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing -fno-exceptions -static-libstdc++ \
+    -static-libgcc -static -fPIC -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection \
+    -fstack-protector-all -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
+    -Wno-nullability-extension -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wl,-z,noexecstack \
     -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
 CFLAGS="$CXXFLAGS"
 LDFLAGS="$CXXFLAGS -xnone"

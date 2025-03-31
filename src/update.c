@@ -232,11 +232,11 @@ static RESULT copy_file(const char *source, const char *destination) {
 }
 
 /* This is required for musl, there's no wrapper for renameat2 like glibc */
-#ifndef HAVE_RENAMEAT2
-#include <syscall.h>
 #define RENAME_NOREPLACE (1 << 0)
 #define RENAME_EXCHANGE (1 << 1)
 #define RENAME_WHITEOUT (1 << 2)
+#ifndef HAVE_RENAMEAT2
+#include <syscall.h>
 #if defined(HAVE_RENAMEAT) && defined(SYS_renameat2)
 static inline int renameat2(int oldfd, const char *oldname, int newfd, const char *newname, unsigned flags) {
     if (!flags)

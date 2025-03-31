@@ -18,7 +18,6 @@
 #include "config.h"
 
 #include <assert.h>
-#include <cstring>
 #include <dirent.h>
 #include <err.h>
 #include <errno.h>

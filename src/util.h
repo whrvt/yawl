@@ -92,5 +92,3 @@ RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs);
 extern const char *g_yawl_dir;
 /* The global configuration path, set at startup in main() */
 extern const char *g_config_dir;
-/* The current argv[0], set at startup in main() */
-extern const char *g_argv0;

@@ -36,7 +36,6 @@
 
 const char *g_yawl_dir;
 const char *g_config_dir;
-const char *g_argv0 = program_invocation_short_name;
 
 struct options {
     int version;              /* 1 = return a version string and exit */
@@ -53,7 +52,7 @@ struct options {
 };
 
 static void print_usage() {
-    printf("Usage: %s [args_for_executable...]\n", g_argv0);
+    printf("Usage: %s [args_for_executable...]\n", program_invocation_short_name);
     printf("\n");
     printf("Environment variables:\n");
     printf("  YAWL_VERBS       Semicolon-separated list of verbs to control " PROG_NAME " behavior:\n");
@@ -76,11 +75,13 @@ static void print_usage() {
     printf("\n");
     printf("                   "
            "YAWL_VERBS=\"make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver\" %s\n",
-           g_argv0);
-    printf("                   YAWL_VERBS=\"verify;reinstall\" %s winecfg\n", g_argv0);
-    printf("                   YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" %s winecfg\n", g_argv0);
-    printf("                   YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" %s\n", g_argv0);
-    printf("                   YAWL_VERBS=\"enter=$(pgrep game.exe)\" %s cheatengine.exe\n", g_argv0);
+           program_invocation_short_name);
+    printf("                   YAWL_VERBS=\"verify;reinstall\" %s winecfg\n", program_invocation_short_name);
+    printf("                   YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" %s winecfg\n", program_invocation_short_name);
+    printf("                   YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" %s\n",
+           program_invocation_short_name);
+    printf("                   YAWL_VERBS=\"enter=$(pgrep game.exe)\" %s cheatengine.exe\n",
+           program_invocation_short_name);
     printf("\n");
     printf("  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/" PROG_NAME
            " or $HOME/.local/share/" PROG_NAME "\n");
@@ -495,7 +496,7 @@ static RESULT create_symlink(nonnull_charp config_name) {
         *last_slash = '\0';
 
     /* Build the symlink path */
-    join_paths(symlink_path, exec_dir, g_argv0);
+    join_paths(symlink_path, exec_dir, program_invocation_short_name);
     append_sep(symlink_path, "-", config_name);
 
     if (access(symlink_path, F_OK) == 0) {
@@ -532,7 +533,7 @@ static RESULT create_wineserver_wrapper(nonnull_charp base_name, nonnull_charp w
     result = create_symlink(server_config_name);
     RETURN_IF_FAILED(result);
 
-    LOG_INFO("Created wineserver wrapper: %s-%s", g_argv0, server_config_name);
+    LOG_INFO("Created wineserver wrapper: %s-%s", program_invocation_short_name, server_config_name);
 
     return result;
 }
@@ -565,7 +566,7 @@ static inline const char *get_config_name(const struct options *opts) {
         return wrapper_name;
     }
 
-    const char *temp = strchr(g_argv0, '-');
+    const char *temp = strchr(program_invocation_short_name, '-');
     if (temp)
         wrapper_name = temp + 1;
 
@@ -709,8 +710,8 @@ int main(int argc, char *argv[]) {
 
         /* Exit after creating the wrapper if no other arguments */
         if (argc <= 1) {
-            LOG_INFO("Wrapper created successfully. Use %s-%s to run with this configuration.", g_argv0,
-                     opts.make_wrapper);
+            LOG_INFO("Wrapper created successfully. Use %s-%s to run with this configuration.",
+                     program_invocation_short_name, opts.make_wrapper);
             return 0;
         }
     }

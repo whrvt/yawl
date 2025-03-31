@@ -4,7 +4,8 @@ bin_PROGRAMS = yawl
 
 yawl_SOURCES = src/yawl.c src/util.c src/util.h src/apparmor.c src/apparmor.h src/bwrap_data.h src/log.c src/log.h \
 	src/result.c src/result.h src/update.c src/update.h src/macros.h src/nsenter.c src/nsenter.h config.h
-yawl_CXXFLAGS = -Os -flto=thin -ffat-lto-objects -ffunction-sections -fdata-sections -Wl,--gc-sections,-s
+#yawl_CXXFLAGS = -O0 -flto=full -ffunction-sections -fdata-sections -fsanitize=address,undefined,cfi,safe-stack -fvisibility=hidden
+yawl_CXXFLAGS = -Os -flto=full -ffunction-sections -fdata-sections -Wl,--gc-sections,-s
 yawl_CFLAGS = $(yawl_CXXFLAGS)
 yawl_LDFLAGS = $(yawl_CXXFLAGS)
 yawl_LDADD = $(NON_GLIB_LIBS) $(ALL_GLIB_LIBS)

@@ -3,8 +3,8 @@
 
 set -e
 
-ZIG_VERSION="0.15.0-dev.64+2a4e06bcb"
-MIMALLOC_VERSION="3.0.2-beta"
+ZIG_VERSION="0.15.0-dev.155+acfdad858"
+MIMALLOC_VERSION="3.0.3"
 LIBUNISTRING_VERSION="1.3"
 LIBIDN2_VERSION="2.3.7"
 PSL_VERSION="0.21.5"
@@ -68,12 +68,22 @@ case "$LIB" in
         fi
 
         cd "mimalloc-$MIMALLOC_VERSION"
+
+        # Multiple definition issue with musl/zig headers
+        sed -i 's|#include <linux/prctl.h>|#define PR_GET_THP_DISABLE 42\n#define PR_SET_VMA 0x53564d41\n#define PR_SET_VMA_ANON_NAME 0|g' src/prim/unix/prim.c
+
         mkdir -p out/release
         cd out/release
-        cmake \
-            -DCMAKE_C_FLAGS="$CFLAGS -Wno-date-time" \
+        env CXX="$CXX" LD="$CXX" CFLAGS="$CXXFLAGS" \
+            CXXFLAGS="$CXXFLAGS -xc++" LDFLAGS="$CXXFLAGS -xnone" cmake \
+            -DCMAKE_C_COMPILER="$ZIGCC" \
+            -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
+            -DCMAKE_CXX_COMPILER="$CXX" \
+            -DCMAKE_CXX_FLAGS="$CXXFLAGS -xc++" \
             -DCMAKE_INSTALL_PREFIX="$PREFIX" \
             -DMI_OPT_ARCH=OFF \
+            -DMI_USE_CXX=ON \
+            -DMI_NO_OPT_ARCH=ON \
             -DMI_BUILD_SHARED=OFF \
             -DMI_BUILD_TESTS=OFF \
             -DMI_INSTALL_TOPLEVEL=ON \
@@ -94,7 +104,8 @@ case "$LIB" in
 
         cd "libunistring-$LIBUNISTRING_VERSION"
 
-        ./configure \
+        cp $cch . &&
+        ./configure -C \
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
@@ -119,7 +130,8 @@ case "$LIB" in
 
         cd "libidn2-$LIBIDN2_VERSION"
 
-        ./configure \
+        cp $cch . &&
+        ./configure -C  \
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
@@ -146,7 +158,8 @@ case "$LIB" in
 
         cd "libpsl-$PSL_VERSION"
 
-        ./configure \
+        cp $cch . &&
+        ./configure -C  \
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
@@ -198,7 +211,8 @@ case "$LIB" in
 
         # Configure xz with minimal features
         # We only need the liblzma library for libarchive
-        ./configure \
+        cp $cch . &&
+        ./configure -C \
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
@@ -262,13 +276,14 @@ case "$LIB" in
         # Disable unnecessary engines, ciphers, and protocols
         CC="$CC" \
         CXX="$CXX" \
-        CPPFLAGS="$CPPFLAGS" \
-        CFLAGS="$CFLAGS" \
-        CXXFLAGS="$CXXFLAGS" \
+        CPPFLAGS="$CPPFLAGS -U_GNU_SOURCE" \
+        CFLAGS="$CFLAGS -U_GNU_SOURCE" \
+        CXXFLAGS="$CXXFLAGS -U_GNU_SOURCE" \
         LDFLAGS="$LDFLAGS" \
         ./config \
             --prefix="$PREFIX" \
             --openssldir="$PREFIX/ssl" \
+            threads \
             no-shared \
             no-legacy \
             no-afalgeng \
@@ -318,7 +333,8 @@ case "$LIB" in
 
         # Configure libarchive with minimal features
         # We need tar and xz support for extracting the Steam Runtime
-        ./configure \
+        cp $cch . &&
+        ./configure -C \
             --prefix="$PREFIX" \
             --enable-bsdtar=static \
             --disable-shared \
@@ -359,7 +375,8 @@ case "$LIB" in
 
         # Configure curl with minimal features
         # We only need HTTP and HTTPS support for downloading the Steam Runtime
-        ./configure \
+        cp $cch . &&
+        ./configure -C \
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
@@ -419,7 +436,8 @@ case "$LIB" in
 
         cd "libffi-$LIBFFI_VERSION"
 
-        ./configure \
+        cp $cch . &&
+        ./configure -C \
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
@@ -628,14 +646,14 @@ distclean: clean
 	$(DISTCLEAN)
 EOF
         make prefix="$PREFIX" \
-            CC="$CC" \
-            LD="$CC" \
-            CXX="$CXX" \
+            CC="$ZIGCC" \
+            LD="$ZIGCC" \
             CPPFLAGS="$CPPFLAGS" \
-            CFLAGS="$CFLAGS" \
+            CFLAGS="$CXXFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
             LDFLAGS="$LDFLAGS" -j"$JOBS" && \
         cp libcap/libcap.a "$PREFIX/lib" && \
+        cp -r libcap/include/uapi/linux "$PREFIX/include" && \
         cp libcap/include/sys/capability.h "$PREFIX/include"
         ;;
 
