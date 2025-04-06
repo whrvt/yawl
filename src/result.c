@@ -8,6 +8,7 @@
  */
 
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "curl/curl.h"
@@ -49,6 +50,41 @@ RESULT result_from_errno(void) {
     }
 }
 
+static const char *generic_code_to_string(const char *prefix, int rescode) {
+    static char out[64] = {0};
+    /* Handle other error codes */
+    if (strlen(prefix) < sizeof(out))
+    {
+        switch (rescode) {
+        case E_UNKNOWN:
+            sprintf(out, "%s: %s", prefix, "Unknown error");
+            break;
+        case E_INVALID_ARG:
+            sprintf(out, "%s: %s", prefix, "Invalid argument");
+            break;
+        case E_OUT_OF_MEMORY:
+            sprintf(out, "%s: %s", prefix, "Out of memory");
+            break;
+        case E_TIMEOUT:
+            sprintf(out, "%s: %s", prefix, "Operation timed out");
+            break;
+        case E_BUSY:
+            sprintf(out, "%s: %s", prefix, "Resource busy");
+            break;
+        case E_CANCELED:
+            sprintf(out, "%s: %s", prefix, "Operation canceled");
+            break;
+        case E_NOT_SUPPORTED:
+            sprintf(out, "%s: %s", prefix, "Operation not supported");
+            break;
+        default:
+            sprintf(out, "%s: %s (%s)", prefix, "Unhandled result code error", rescode < 256 ? strerror(rescode) : "-");
+        }
+        return out;
+    }
+    return prefix;
+}
+
 const char *result_to_string(RESULT result) {
     if (SUCCEEDED(result) && result == RESULT_OK)
         return "Success";
@@ -56,24 +92,6 @@ const char *result_to_string(RESULT result) {
     /* Get components of the result */
     int category = RESULT_CATEGORY(result);
     int code = RESULT_CODE(result);
-
-    /* Handle common error codes first */
-    switch (code) {
-    case E_UNKNOWN:
-        return "Unknown error";
-    case E_INVALID_ARG:
-        return "Invalid argument";
-    case E_OUT_OF_MEMORY:
-        return "Out of memory";
-    case E_TIMEOUT:
-        return "Operation timed out";
-    case E_BUSY:
-        return "Resource busy";
-    case E_CANCELED:
-        return "Operation canceled";
-    case E_NOT_SUPPORTED:
-        return "Operation not supported";
-    }
 
     /* Handle category-specific errors */
     switch (category) {
@@ -92,7 +110,7 @@ const char *result_to_string(RESULT result) {
         case E_NOT_DIR:
             return "Not a directory";
         default:
-            return "Filesystem error";
+            return generic_code_to_string("Filesystem error", code);
         }
     case CAT_NETWORK:
         switch (code) {
@@ -102,13 +120,13 @@ const char *result_to_string(RESULT result) {
             return curl_easy_strerror((CURLcode)code);
         }
     case CAT_RUNTIME:
-        return "Runtime error";
+        return generic_code_to_string("Runtime error", code);
     case CAT_CONFIG:
-        return "Configuration error";
+        return generic_code_to_string("Configuration error", code);
     case CAT_CONTAINER:
-        return "Container error";
+        return generic_code_to_string("Container error", code);
     case CAT_APPARMOR:
-        return "AppArmor error";
+        return generic_code_to_string("AppArmor error", code);
     case CAT_JSON:
         switch (code) {
         case E_PARSE_ERROR:
@@ -116,15 +134,10 @@ const char *result_to_string(RESULT result) {
         case E_NOT_FOUND:
             return "JSON data not found";
         default:
-            return "JSON error";
+            return generic_code_to_string("JSON error", code);
         }
     case CAT_SYSTEM:
-        /* For system errors, try to map back to errno strings if possible */
-        if (code < 256) {
-            return strerror(code);
-        }
-        return "System error";
+        return generic_code_to_string("System error", code);
     }
-
-    return "Unhandled result code error";
+    return generic_code_to_string("Unknown error", code);
 }

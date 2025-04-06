@@ -287,6 +287,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
     result = download_file(hash_url, local_sums_path, nullptr);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to download hash file");
+        unlink(local_sums_path);
         free(local_sums_path);
         return result;
     }
@@ -295,6 +296,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
     if (!fp) {
         result = result_from_errno();
         LOG_RESULT(LOG_ERROR, result, "Failed to open downloaded hash file");
+        unlink(local_sums_path);
         free(local_sums_path);
         return result;
     }

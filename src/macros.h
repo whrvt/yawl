@@ -13,6 +13,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Cleanup function for pointers allocated with malloc/strdup/etc. */
 [[gnu::always_inline]] static inline void cleanup_pointer(void *p) {
     void **pp = (void**)p;
@@ -43,3 +47,7 @@
 #define autofree_del [[gnu::cleanup(cleanup_unlink_and_free)]]
 
 #define nonnull_charp [[gnu::nonnull]] const char *_Nonnull
+
+#ifdef __cplusplus
+}
+#endif

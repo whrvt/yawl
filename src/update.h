@@ -11,6 +11,10 @@
 
 #include "result.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* (private for now) Check if a new version is available and print information about it
  * Returns RESULT_OK if no update is available or if the update check was successful
  * Returns error RESULT on failure
@@ -28,3 +32,7 @@
  * Returns RESULT_OK on success, error RESULT on failure
  */
 RESULT handle_updates(int check_only, int do_update);
+
+#ifdef __cplusplus
+}
+#endif

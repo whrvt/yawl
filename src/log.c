@@ -32,7 +32,7 @@ static gboolean notify_initialized = FALSE;
 #define COLOR_BLUE "\033[34m"
 #define COLOR_CYAN "\033[36m"
 
-static constexpr const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG", "DOWNLOAD"};
+static constexpr const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG", "DL"};
 static constexpr const char *const level_colors[] = {"\0",        COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW,
                                                      COLOR_GREEN, COLOR_BLUE,   COLOR_CYAN};
 
@@ -233,7 +233,7 @@ void log_progress(const char *operation, double percentage, int bytes_done, int 
     int filled_width = (int)((percentage / 100.0) * bar_width);
 
     fprintf(stdout, "\r%s[%s]%s ", level_colors[LOG_PROGRESS], level_strings[LOG_PROGRESS], COLOR_RESET);
-    fprintf(stdout, "%s [", operation);
+    fprintf(stdout, "%-20.20s [", operation);
 
     for (int i = 0; i < bar_width; i++) {
         if (i < filled_width)

@@ -11,6 +11,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * RESULT bit layout:
  * 31    - Success/Failure flag (0 = success, 1 = failure)
@@ -102,3 +106,7 @@ const char *result_to_string(RESULT result);
 /* #define PROPAGATE_ERROR_CAT(result, new_cat)                                                                           \
     (FAILED(result) ? MAKE_RESULT(RESULT_SEVERITY(result), new_cat, RESULT_CODE(result)) : (result))
  */
+
+#ifdef __cplusplus
+}
+#endif

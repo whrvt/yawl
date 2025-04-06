@@ -363,6 +363,7 @@ static RESULT setup_runtime(const struct options *opts) {
                 success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path, nullptr);
                 if (FAILED(success)) {
                     LOG_RESULT(LOG_ERROR, success, "Failed to download runtime");
+                    unlink(archive_path);
                     continue;
                 }
             }
@@ -371,6 +372,7 @@ static RESULT setup_runtime(const struct options *opts) {
             success = extract_archive(archive_path, g_yawl_dir);
             if (FAILED(success)) {
                 LOG_RESULT(LOG_ERROR, success, "Failed to extract runtime");
+                unlink(archive_path);
                 continue;
             }
 

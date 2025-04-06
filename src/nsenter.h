@@ -10,12 +10,16 @@
  * SPDX-License-Identifier: GPL-2.0-only
  * See the full license text in the repository LICENSE file.
  */
-/*
- * Constant strings for usage() functions. For more info see
- * Documentation/{howto-usage-function.txt,boilerplate.c}
- */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 int do_nsenter(int argc, char *argv[], unsigned long pid_to_enter);
 
 /* Convert a string to an unsigned long in the specified base */
 unsigned long str2unum(const char *str, int base);
+
+#ifdef __cplusplus
+}
+#endif

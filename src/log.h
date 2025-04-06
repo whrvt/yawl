@@ -13,6 +13,10 @@
 
 #include "result.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum {
     LOG_NONE = 0,
     LOG_SYSTEM = 1,  /* Messages always attempted to be logged to stdout if in a terminal */
@@ -59,3 +63,7 @@ void log_progress_end(void);
 
 #define LOG_RESULT(level, result, context) _log_result(level, __FILE__, __LINE__, result, context)
 #define LOG_DEBUG_RESULT(result, context) _log_result(LOG_DEBUG, __FILE__, __LINE__, result, context)
+
+#ifdef __cplusplus
+}
+#endif
