@@ -141,7 +141,8 @@ static RESULT parse_env_options(struct options *opts) {
         return RESULT_OK;
 
     autofree char *verbs_copy = strdup(verbs);
-    char *token = strtok(verbs_copy, ";");
+    char *token, *saveptr;
+    token = strtok_r(verbs_copy, ";", &saveptr);
     RESULT result = RESULT_OK;
 
     while (token) {
@@ -156,7 +157,7 @@ static RESULT parse_env_options(struct options *opts) {
             LOG_DEBUG("Returning early, got help token");
             break;
         }
-        token = strtok(nullptr, ";");
+        token = strtok_r(nullptr, ";", &saveptr);
     }
 
     return RESULT_OK;

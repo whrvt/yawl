@@ -17,18 +17,17 @@
 #include "archive_entry.h"
 #include "curl/curl.h"
 #include "log.h"
+#include "macros.h"
 #include "openssl/evp.h"
 #include "util.h"
 
-void _append_sep_impl(char *result_ptr[], const char *separator, int num_strings, ...) {
-    assert(num_strings >= 0);
-
+void _append_sep_impl(char *result_ptr[], const char *separator, size_t num_strings, ...) {
     char *old_result = *result_ptr;
     size_t old_len = (old_result != nullptr) ? strlen(old_result) : 0;
     size_t sep_len = strlen(separator);
     size_t total_length = old_len;
 
-    int num_separators = num_strings;
+    size_t num_separators = num_strings;
     if (old_len == 0 && num_strings > 0)
         num_separators--;
 
@@ -38,7 +37,7 @@ void _append_sep_impl(char *result_ptr[], const char *separator, int num_strings
     va_start(args, num_strings);
     va_copy(args_copy, args);
 
-    for (int i = 0; i < num_strings; i++) {
+    for (size_t i = 0; i < num_strings; i++) {
         const char *str = va_arg(args_copy, const char *);
         total_length += strlen(str);
     }
@@ -57,7 +56,7 @@ void _append_sep_impl(char *result_ptr[], const char *separator, int num_strings
 
     /* do the concatenation */
     char *dest = new_result + old_len;
-    for (int i = 0; i < num_strings; i++) {
+    for (size_t i = 0; i < num_strings; i++) {
         const char *str = va_arg(args, const char *);
 
         if (i > 0 || old_len > 0) {
@@ -112,7 +111,7 @@ char *expand_path(const char *path) {
     return result;
 }
 
-static inline RESULT create_directory_tree(char *path) {
+static forceinline RESULT create_directory_tree(char *path) {
     /* Skip leading slashes */
     char *p = path;
     if (*p == '/')
@@ -154,7 +153,7 @@ RESULT ensure_dir(const char *path) {
             ret = result_from_errno();
         }
     } else {
-        /* Directory doesn't exist, create it (recursively) */
+        /* Directory doesn't exist, create it */
         ret = create_directory_tree(expanded_path);
     }
 
@@ -421,19 +420,36 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     return RESULT_OK;
 }
 
+/* archive-specific cleanup */
+static forceinline void cleanup_archive_r(void *p) {
+    struct archive **r = (struct archive **)p;
+    if (r && *r) {
+        archive_read_free(*r); /* (header) ... archive_read_free will call archive_read_close for you. */
+        *r = nullptr;
+    }
+}
+
+static forceinline void cleanup_archive_w(void *p) {
+    struct archive **w = (struct archive **)p;
+    if (w && *w) {
+        archive_write_close(*w);
+        archive_write_free(*w);
+        *w = nullptr;
+    }
+}
+
+#define auto_archive_r [[gnu::cleanup(cleanup_archive_r)]]
+#define auto_archive_w [[gnu::cleanup(cleanup_archive_w)]]
+
 RESULT extract_archive(const char *archive_path, const char *extract_path) {
     if (!archive_path || !extract_path)
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
 
-    struct archive *a;
-    struct archive *ext;
-    struct archive_entry *entry;
     int flags = ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS |
                 ARCHIVE_EXTRACT_OWNER;
     RESULT result = RESULT_OK;
-    char *old_cwd = nullptr;
 
-    a = archive_read_new();
+    auto_archive_r struct archive *a = archive_read_new();
     if (!a)
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
 
@@ -443,11 +459,9 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
     archive_read_support_filter_lzip(a);
     archive_read_support_filter_gzip(a);
 
-    ext = archive_write_disk_new();
-    if (!ext) {
-        archive_read_free(a);
+    auto_archive_w struct archive *ext = archive_write_disk_new();
+    if (!ext)
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
-    }
 
     archive_write_disk_set_options(ext, flags);
     archive_write_disk_set_standard_lookup(ext);
@@ -455,24 +469,20 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
     if (archive_read_open_filename(a, archive_path, BUFFER_SIZE) != ARCHIVE_OK) {
         result = MAKE_RESULT(SEV_ERROR, CAT_FILESYSTEM, E_IO_ERROR);
         LOG_RESULT(LOG_ERROR, result, "Failed to open archive for extraction");
-        goto cleanup;
+        return result;
     }
 
-    old_cwd = getcwd(nullptr, 0);
-    if (!old_cwd) {
-        result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to get current working directory");
-        goto cleanup;
-    }
-
-    if (chdir(extract_path) != 0) {
-        result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to change to extraction directory");
-        free(old_cwd);
-        goto cleanup;
-    }
-
+    struct archive_entry *entry;
     while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
+        char fullpath[BUFFER_SIZE];
+        const char *current_path = archive_entry_pathname(entry);
+
+        /* Construct the full path including extraction directory */
+        int path_len = snprintf(fullpath, sizeof(fullpath), "%s/%s", extract_path, current_path);
+
+        /* Update the entry with the full destination path */
+        archive_entry_copy_pathname(entry, fullpath);
+
         if (archive_write_header(ext, entry) != ARCHIVE_OK) {
             LOG_WARNING("Skipping entry, failed to write header: %s", archive_error_string(ext));
             continue;
@@ -484,23 +494,12 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
 
         while (archive_read_data_block(a, &buff, &size, &offset) == ARCHIVE_OK) {
             if (archive_write_data_block(ext, buff, size, offset) != ARCHIVE_OK) {
-                LOG_WARNING("Write error for %s: %s", archive_entry_pathname(entry), archive_error_string(ext));
+                LOG_WARNING("Write error for %s: %s", fullpath, archive_error_string(ext));
                 break;
             }
         }
     }
 
-    if (chdir(old_cwd) != 0) {
-        LOG_WARNING("Failed to restore working directory: %s", strerror(errno));
-    }
-
-    free(old_cwd);
-
-cleanup:
-    archive_read_close(a);
-    archive_read_free(a);
-    archive_write_close(ext);
-    archive_write_free(ext);
     return result;
 }
 
@@ -510,8 +509,8 @@ RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
     if (!yawl_verbs || *yawl_verbs == '\0')
         return MAKE_RESULT(SEV_INFO, CAT_SYSTEM, E_NOT_FOUND);
 
-    char *copy = strdup(yawl_verbs);
-    char *new_verbs = nullptr;
+    autofree char *copy = strdup(yawl_verbs);
+    autofree char *new_verbs = nullptr;
     char *token, *saveptr;
     token = strtok_r(copy, ";", &saveptr);
 
@@ -533,14 +532,11 @@ RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
         }
 
         /* If not to be removed, add it to the new list */
-        if (!remove_verb) {
+        if (!remove_verb)
             append_sep(new_verbs, ";", token);
-        }
 
         token = strtok_r(nullptr, ";", &saveptr);
     }
-
-    free(copy);
 
     if (new_verbs && *new_verbs != '\0') {
         setenv("YAWL_VERBS", new_verbs, 1);
@@ -549,6 +545,5 @@ RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {
         result = MAKE_RESULT(SEV_INFO, CAT_SYSTEM, E_NOT_FOUND);
     }
 
-    free(new_verbs);
     return result;
 }

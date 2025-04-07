@@ -60,6 +60,12 @@ RESULT log_init(void) {
     char *log_file_path = nullptr;
     terminal_output = !!isatty(STDOUT_FILENO);
 
+    /* From the ctime(3) docs:
+     * According to POSIX.1, localtime() is required to behave as though tzset(3)
+     * was called, while localtime_r() does not have this requirement.
+     * For portable code, tzset(3) should be called before localtime_r(). */
+    tzset();
+
     const char *log_level_env = getenv("YAWL_LOG_LEVEL");
     if (log_level_env)
         log_set_level(parse_log_level(log_level_env));
@@ -88,8 +94,10 @@ RESULT log_init(void) {
         }
 
         time_t now = time(nullptr);
+        struct tm tm_info;
+        localtime_r(&now, &tm_info);
         char time_str[64];
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
 
         fprintf(log_file, "=== Log session started at %s ===\n", time_str);
         fflush(log_file);
@@ -103,8 +111,10 @@ void log_cleanup(void) {
     if (log_file) {
         /* Write session end marker */
         time_t now = time(nullptr);
+        struct tm tm_info;
+        localtime_r(&now, &tm_info);
         char time_str[64];
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&now));
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
 
         fprintf(log_file, "=== Log session ended at %s ===\n\n", time_str);
         fflush(log_file);
@@ -151,18 +161,11 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         free(message);
     }
 
-    char timestamp[32];
-    time_t now = time(nullptr);
-
-    /* Create timestamp */
-    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
-
     /* Output to terminal if appropriate */
     if (terminal_output) {
         FILE *output = (level <= LOG_WARNING) ? stderr : stdout;
 
-        /* Print with colors if it's a terminal */
-        fprintf(output, "%s[%s]%s %s: ", level_colors[level], level_strings[level], COLOR_RESET, timestamp);
+        fprintf(output, "%s[%s]%s ", level_colors[level], level_strings[level], COLOR_RESET);
 
         va_start(args, format);
         vfprintf(output, format, args);
@@ -172,6 +175,14 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
     }
 
     if (log_file && level != LOG_SYSTEM && level != LOG_PROGRESS) {
+        char timestamp[32];
+        time_t now = time(nullptr);
+
+        /* Create timestamp */
+        struct tm tm_info;
+        localtime_r(&now, &tm_info);
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm_info);
+
         /* Get just the filename without the path */
         const char *filename = strrchr(file, '/');
         if (filename)

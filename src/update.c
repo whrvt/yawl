@@ -33,7 +33,7 @@
 #define BACKUP_SUFFIX ".bak"
 
 /* json-glib specific cleanup */
-[[gnu::always_inline]] static inline void cleanup_json_parser(void *p) {
+static forceinline void cleanup_json_parser(void *p) {
     JsonParser **parser = (JsonParser **)p;
     if (parser && *parser) {
         g_object_unref(*parser);
@@ -41,7 +41,7 @@
     }
 }
 
-[[gnu::always_inline]] static inline void cleanup_gerror(void *p) {
+static forceinline void cleanup_gerror(void *p) {
     GError **error = (GError **)p;
     if (error && *error) {
         g_error_free(*error);

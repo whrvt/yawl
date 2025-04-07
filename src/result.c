@@ -51,34 +51,34 @@ RESULT result_from_errno(void) {
 }
 
 static const char *generic_code_to_string(const char *prefix, int rescode) {
-    static char out[64] = {0};
+    static char out[128] = {0};
     /* Handle other error codes */
     if (strlen(prefix) < sizeof(out))
     {
         switch (rescode) {
         case E_UNKNOWN:
-            sprintf(out, "%s: %s", prefix, "Unknown error");
+            snprintf(out, sizeof(out), "%s: %s", prefix, "Unknown error");
             break;
         case E_INVALID_ARG:
-            sprintf(out, "%s: %s", prefix, "Invalid argument");
+            snprintf(out, sizeof(out), "%s: %s", prefix, "Invalid argument");
             break;
         case E_OUT_OF_MEMORY:
-            sprintf(out, "%s: %s", prefix, "Out of memory");
+            snprintf(out, sizeof(out), "%s: %s", prefix, "Out of memory");
             break;
         case E_TIMEOUT:
-            sprintf(out, "%s: %s", prefix, "Operation timed out");
+            snprintf(out, sizeof(out), "%s: %s", prefix, "Operation timed out");
             break;
         case E_BUSY:
-            sprintf(out, "%s: %s", prefix, "Resource busy");
+            snprintf(out, sizeof(out), "%s: %s", prefix, "Resource busy");
             break;
         case E_CANCELED:
-            sprintf(out, "%s: %s", prefix, "Operation canceled");
+            snprintf(out, sizeof(out), "%s: %s", prefix, "Operation canceled");
             break;
         case E_NOT_SUPPORTED:
-            sprintf(out, "%s: %s", prefix, "Operation not supported");
+            snprintf(out, sizeof(out), "%s: %s", prefix, "Operation not supported");
             break;
         default:
-            sprintf(out, "%s: %s (%s)", prefix, "Unhandled result code error", rescode < 256 ? strerror(rescode) : "-");
+            snprintf(out, sizeof(out), "%s: %s (%s)", prefix, "Unhandled result code error", rescode < 256 ? strerror(rescode) : "-");
         }
         return out;
     }
