@@ -314,7 +314,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
             *newline = '\0';
 
         if (STRING_EQUALS(file, file_name)) {
-            strncpy(hash_str, line, 64);
+            memcpy(hash_str, line, 64);
             hash_str[64] = '\0';
             found = 1;
             break;

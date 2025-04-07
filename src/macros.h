@@ -19,6 +19,10 @@ extern "C" {
 
 #define forceinline __attribute__((always_inline)) inline
 
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#endif
+
 /* Cleanup function for pointers allocated with malloc/strdup/etc. */
 static forceinline void cleanup_pointer(void *p) {
     void **pp = (void**)p;

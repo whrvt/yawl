@@ -46,7 +46,7 @@ Current useful environment variables:
 
   - `none`: Turn off all logging
   - `error`: Show only critical errors that prevent proper operation
-  - `warning`: Show warnings and errors (default)
+  - `warn`: Show warnings and errors (default)
   - `info`: Show normal operational information and all of the above
   - `debug`: Show detailed debugging information and all of the above
 

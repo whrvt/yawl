@@ -90,7 +90,7 @@ static void print_usage() {
     printf("  YAWL_LOG_LEVEL   Control the verbosity of the logging output. Valid values are:\n");
     printf("                   - 'none'     Turn off all logging\n");
     printf("                   - 'error'    Show only critical errors that prevent proper operation\n");
-    printf("                   - 'warning'  Show warnings and errors (default)\n");
+    printf("                   - 'warn'  Show warnings and errors (default)\n");
     printf("                   - 'info'     Show normal operational information and all of the above\n");
     printf("                   - 'debug'    Show detailed debugging information and all of the above\n");
     printf("\n");

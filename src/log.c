@@ -32,13 +32,13 @@ static gboolean notify_initialized = FALSE;
 #define COLOR_BLUE "\033[34m"
 #define COLOR_CYAN "\033[36m"
 
-static constexpr const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARNING", "INFO", "DEBUG", "DL"};
+static constexpr const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "WARN", "INFO", "DEBUG", "DOWN"};
 static constexpr const char *const level_colors[] = {"\0",        COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW,
                                                      COLOR_GREEN, COLOR_BLUE,   COLOR_CYAN};
 
 /* Parse log level from string */
 static log_level_t parse_log_level(const char *level_str) {
-    if (!level_str || (strlen(level_str) > (sizeof("warning") - 1UL))) /* longest error level string */
+    if (!level_str || (strlen(level_str) > (sizeof("error") - 1UL))) /* longest error level string */
         return LOG_INFO;
 
     log_level_t level = LOG_INFO;
@@ -46,7 +46,7 @@ static log_level_t parse_log_level(const char *level_str) {
         level = LOG_NONE;
     else if (LCSTRING_EQUALS(level_str, "error"))
         level = LOG_ERROR;
-    else if (LCSTRING_EQUALS(level_str, "warning"))
+    else if (LCSTRING_EQUALS(level_str, "warn"))
         level = LOG_WARNING;
     else if (LCSTRING_EQUALS(level_str, "info"))
         level = LOG_INFO;

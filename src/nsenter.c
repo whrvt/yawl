@@ -62,10 +62,6 @@
 #define STATFS_CGROUP2_MAGIC 0x63677270
 #define STATFS_PROC_MAGIC 0x9fa0
 
-#ifndef ARRAY_SIZE
-#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
-#endif
-
 #ifndef LOCALEDIR
 #define LOCALEDIR "/usr/share/locale"
 #endif
@@ -145,6 +141,7 @@ static inline int pidfd_getfd(int pidfd __attribute__((unused)), int targetfd __
 #include "capability.h"
 #include "log.h"
 #include "nsenter.h"
+#include "macros.h"
 
 #define LOG_ERROR_AND_RETURN(...)                                                                                      \
     do {                                                                                                               \
