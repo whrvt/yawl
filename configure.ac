@@ -143,7 +143,7 @@ export CC="$CC"
 export CXX="$CXX"
 export LD="$CC"
 shared_includes="-D_GNU_SOURCE -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$deps_prefix/include"
-shared_flags="-fwrapv -fno-strict-aliasing -ffat-lto-objects \
+shared_flags="-fwrapv -fno-strict-aliasing -ffat-lto-objects -fno-exceptions \
     -ffunction-sections -fdata-sections -pthread -fcf-protection=full -fstack-clash-protection -fstack-protector-all \
     -static-libgcc -static -fPIC -fPIE -static-libasan -L$deps_prefix/lib -Wl,--gc-sections -Wl,-z,noexecstack \
     -Wno-date-time -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"

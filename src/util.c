@@ -478,7 +478,7 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
         const char *current_path = archive_entry_pathname(entry);
 
         /* Construct the full path including extraction directory */
-        int path_len = snprintf(fullpath, sizeof(fullpath), "%s/%s", extract_path, current_path);
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", extract_path, current_path);
 
         /* Update the entry with the full destination path */
         archive_entry_copy_pathname(entry, fullpath);
