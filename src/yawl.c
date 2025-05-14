@@ -37,6 +37,53 @@
 const char *g_yawl_dir;
 const char *g_config_dir;
 
+static constexpr const char *const usage_text =
+    R"_(Usage: %s [args_for_executable...]
+Environment variables:
+  YAWL_VERBS       Semicolon-separated list of verbs to control )_" PROG_NAME R"_( behavior:
+                   - 'version'   Just print the version of )_" PROG_NAME R"_( and exit
+                   - 'verify'    Verify the runtime before running (default: only verify after install)
+                                 Also can be used to check for runtime updates (will be a separate option in the future)
+                   - 'reinstall' Force reinstallation of the runtime
+                   - 'help'      Display this help and exit
+                   - 'check'     Check for updates to )_" PROG_NAME R"_( (without downloading/installing)
+                   - 'update'    Check for, download, and install available updates
+                   - 'exec=PATH' Set the executable to run in the container (default: )_" DEFAULT_EXEC_PATH R"_()
+                   - 'make_wrapper=NAME' Create a wrapper configuration and symlink
+                   - 'config=NAME'       Use a specific configuration file
+                   - 'wineserver=PATH'   Set the wineserver executable path when creating a wrapper
+                   - 'enter=PID'         Run an executable in the same container as PID
+
+            Examples:
+                YAWL_VERBS="make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver" %s
+                YAWL_VERBS="verify;reinstall" %s winecfg
+                YAWL_VERBS="exec=/opt/wine/bin/wine64" %s winecfg
+                YAWL_VERBS="make_wrapper=cool-wine;exec=/opt/wine/bin/wine64" %s
+                YAWL_VERBS="enter=$(pgrep game.exe)" %s cheatengine.exe
+
+  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/)_" PROG_NAME
+    R"_( or $HOME/.local/share/)_" PROG_NAME R"_(
+            Example:
+                YAWL_INSTALL_DIR="$HOME/programs/winelauncher" YAWL_VERBS="reinstall" %s
+
+  YAWL_LOG_LEVEL   Control the verbosity of the logging output. Valid values are:
+                   - 'none'     Turn off all logging
+                   - 'error'    Show only critical errors that prevent proper operation
+                   - 'warn'     Show warnings and errors (default)
+                   - 'info'     Show normal operational information and all of the above
+                   - 'debug'    Show detailed debugging information and all of the above
+
+  YAWL_LOG_FILE    Specify a custom path for the log file. By default, logs are written to:
+                   - Terminal output (only when running interactively)
+                   - $YAWL_INSTALL_DIR/)_" PROG_NAME R"_(.log
+)_";
+
+static void print_usage() {
+    printf(usage_text, program_invocation_short_name, program_invocation_short_name, program_invocation_short_name,
+           program_invocation_short_name, program_invocation_short_name, program_invocation_short_name,
+           program_invocation_short_name); // lol
+}
+
 struct options {
     int version;              /* 1 = return a version string and exit */
     int verify;               /* 0 = no verification (default), 1 = verify */
@@ -50,54 +97,6 @@ struct options {
     const char *config;       /* Name of the config to use (nullptr = use argv[0] or default) */
     const char *wineserver;   /* Path to the wineserver binary (nullptr = don't create wineserver wrapper) */
 };
-
-static void print_usage() {
-    printf("Usage: %s [args_for_executable...]\n", program_invocation_short_name);
-    printf("\n");
-    printf("Environment variables:\n");
-    printf("  YAWL_VERBS       Semicolon-separated list of verbs to control " PROG_NAME " behavior:\n");
-    printf("                   - 'version'   Just print the version of " PROG_NAME " and exit\n");
-    printf("                   - 'verify'    Verify the runtime before running (default: only verify after install)\n");
-    printf("                                 Also can be used to check for runtime updates (will be a separate option "
-           "in the future)\n");
-    printf("                   - 'reinstall' Force reinstallation of the runtime\n");
-    printf("                   - 'help'      Display this help and exit\n");
-    printf("                   - 'check'     Check for updates to " PROG_NAME " (without downloading/installing)\n");
-    printf("                   - 'update'    Check for, download, and install available updates\n");
-    printf("                   - 'exec=PATH' Set the executable to run in the container (default: %s)\n",
-           DEFAULT_EXEC_PATH);
-    printf("                   - 'make_wrapper=NAME' Create a wrapper configuration and symlink\n");
-    printf("                   - 'config=NAME'       Use a specific configuration file\n");
-    printf("                   - 'wineserver=PATH'   Set the wineserver executable path when creating a wrapper\n");
-    printf("                   - 'enter=PID'         Run an executable in the same container as PID\n");
-    printf("\n");
-    printf("               Examples:\n");
-    printf("\n");
-    printf("                   "
-           "YAWL_VERBS=\"make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver\" %s\n",
-           program_invocation_short_name);
-    printf("                   YAWL_VERBS=\"verify;reinstall\" %s winecfg\n", program_invocation_short_name);
-    printf("                   YAWL_VERBS=\"exec=/opt/wine/bin/wine64\" %s winecfg\n", program_invocation_short_name);
-    printf("                   YAWL_VERBS=\"make_wrapper=cool-wine;exec=/opt/wine/bin/wine64\" %s\n",
-           program_invocation_short_name);
-    printf("                   YAWL_VERBS=\"enter=$(pgrep game.exe)\" %s cheatengine.exe\n",
-           program_invocation_short_name);
-    printf("\n");
-    printf("  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/" PROG_NAME
-           " or $HOME/.local/share/" PROG_NAME "\n");
-    printf("          Example: YAWL_INSTALL_DIR=\"$HOME/programs/winelauncher\" YAWL_VERBS=\"reinstall\" yawl\n");
-    printf("\n");
-    printf("  YAWL_LOG_LEVEL   Control the verbosity of the logging output. Valid values are:\n");
-    printf("                   - 'none'     Turn off all logging\n");
-    printf("                   - 'error'    Show only critical errors that prevent proper operation\n");
-    printf("                   - 'warn'  Show warnings and errors (default)\n");
-    printf("                   - 'info'     Show normal operational information and all of the above\n");
-    printf("                   - 'debug'    Show detailed debugging information and all of the above\n");
-    printf("\n");
-    printf("  YAWL_LOG_FILE    Specify a custom path for the log file. By default, logs are written to:\n");
-    printf("                   - Terminal output (only when running interactively)\n");
-    printf("                   - $YAWL_INSTALL_DIR/" PROG_NAME ".log\n");
-}
 
 /* Parse a single option string and update the options structure */
 static RESULT parse_option(nonnull_charp option, struct options *opts) {

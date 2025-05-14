@@ -360,7 +360,7 @@ export LD="$ZIGCPP"
 
 # Shared flags/libraries for all targets
 CPPFLAGS="-D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-CXXFLAGS="-xc++ --std=gnu++23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing -fno-exceptions -static-libstdc++ \
+CXXFLAGS="-xc++ --std=gnu++23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing -fno-rtti -fno-exceptions -static-libstdc++ \
     -static-libgcc -static -fPIC -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection \
     -fstack-protector-all -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
     -Wno-nullability-extension -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wl,-z,noexecstack \

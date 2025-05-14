@@ -3,7 +3,7 @@
 
 set -e
 
-ZIG_VERSION="0.15.0-dev.155+acfdad858"
+ZIG_VERSION="0.15.0-dev.532+a3693aae3"
 MIMALLOC_VERSION="3.0.3"
 LIBUNISTRING_VERSION="1.3"
 LIBIDN2_VERSION="2.3.7"
@@ -77,7 +77,7 @@ case "$LIB" in
         env CXX="$CXX" LD="$CXX" CFLAGS="$CXXFLAGS" \
             CXXFLAGS="$CXXFLAGS -xc++" LDFLAGS="$CXXFLAGS -xnone" cmake \
             -DCMAKE_C_COMPILER="$ZIGCC" \
-            -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
+            -DCMAKE_C_FLAGS="$CXXFLAGS" \
             -DCMAKE_CXX_COMPILER="$CXX" \
             -DCMAKE_CXX_FLAGS="$CXXFLAGS -xc++" \
             -DCMAKE_INSTALL_PREFIX="$PREFIX" \
@@ -519,7 +519,6 @@ case "$LIB" in
                             -Dglib:b_staticpic=true \
                             -Dglib:default_library=static \
                             -Dglib:default_both_libraries=static \
-                            -Dglib:man=false \
                             -Dglib:man-pages=disabled \
                             -Dglib:dtrace=disabled \
                             -Dglib:systemtap=disabled \
@@ -633,7 +632,7 @@ case "$LIB" in
         sed -i 's|^CC :=|CC ?=|g' Make.Rules
         sed -i 's|CFLAGS := -O2 -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64|CFLAGS := $(CFLAGS) -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64|g' Make.Rules
         sed -i 's|-Wl,-x -shared|-static|g' Make.Rules
-    cat >Makefile <<'EOF'
+        cat >Makefile <<'EOF'
 topdir=$(shell pwd)
 include Make.Rules
 all install clean: %: %-here

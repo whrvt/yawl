@@ -4,6 +4,7 @@
 *.h.in*
 *.dirstamp
 .clangd
+.cache/
 confdefs.h
 .deps/
 .libs/
@@ -39,5 +40,6 @@ engines-3/
 *~
 *.swp
 .vscode/
+compile_commands.json
 
 garbage/
