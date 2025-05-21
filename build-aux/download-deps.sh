@@ -44,9 +44,9 @@ download_file() {
     local output="$2"
 
     if command -v wget >/dev/null 2>&1; then
-        curl -sSL "$url" -o "$output"
-    elif command -v curl >/dev/null 2>&1; then
         wget -q "$url" -O "$output"
+    elif command -v curl >/dev/null 2>&1; then
+        curl -sSL "$url" -o "$output"
     else
         echo "Error: Neither wget nor curl found"
         return 1
