@@ -19,7 +19,6 @@
 
 #define PROG_NAME "yawl"
 #define CONFIG_DIR "configs"
-
 #define BUFFER_SIZE 8192
 
 /* case sensitive */
