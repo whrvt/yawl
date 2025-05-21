@@ -16,10 +16,12 @@
 #include "archive.h"
 #include "archive_entry.h"
 #include "curl/curl.h"
+#include "openssl/evp.h"
+
 #include "log.hpp"
 #include "macros.hpp"
-#include "openssl/evp.h"
 #include "util.hpp"
+#include "yawlconfig.hpp"
 
 void _append_sep_impl(char *result_ptr[], const char *separator, size_t num_strings, ...) {
     char *old_result = *result_ptr;
@@ -281,7 +283,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
     int found = 0;
     RESULT result = RESULT_OK;
 
-    join_paths(local_sums_path, g_yawl_dir, "SHA256SUMS");
+    join_paths(local_sums_path, config::yawl_dir, "SHA256SUMS");
 
     result = download_file(hash_url, local_sums_path, nullptr);
     if (FAILED(result)) {

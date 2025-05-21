@@ -23,6 +23,7 @@
 #include "result.hpp"
 #include "update.hpp"
 #include "util.hpp"
+#include "yawlconfig.hpp"
 
 #include "fmt/compile.h"
 #include "fmt/core.h"
@@ -38,9 +39,6 @@ using namespace fmt::literals;
 
 #define DEFAULT_EXEC_PATH "/usr/bin/wine"
 #define CONFIG_EXTENSION ".cfg"
-
-const char *g_yawl_dir;
-const char *g_config_dir;
 
 static void print_usage() {
     fmt::print(R"_(Usage: {2} [args_for_executable...]
@@ -162,46 +160,6 @@ static RESULT parse_env_options(struct options *opts) {
     return RESULT_OK;
 }
 
-static const char *setup_prog_dir(void) {
-    char *result = nullptr;
-    struct passwd *pw;
-
-    const char *temp_dir = getenv("YAWL_INSTALL_DIR");
-    if (temp_dir)
-        result = expand_path(temp_dir);
-    else if ((temp_dir = getenv("XDG_DATA_HOME")))
-        join_paths(result, temp_dir, PROG_NAME);
-    else if ((temp_dir = getenv("HOME")) || ((pw = getpwuid(getuid())) && (temp_dir = pw->pw_dir)))
-        join_paths(result, temp_dir, ".local/share/" PROG_NAME);
-
-    RESULT ensure_result = ensure_dir(result);
-    if (FAILED(ensure_result)) {
-        fprintf(stderr, "Error: Failed to create or access program directory: %s\n", result_to_string(ensure_result));
-        if (result)
-            fprintf(stderr, "Attempted directory: %s\n", result);
-        free(result);
-        result = nullptr;
-    }
-
-    return result;
-}
-
-static const char *setup_config_dir(void) {
-    char *result = nullptr;
-    join_paths(result, g_yawl_dir, CONFIG_DIR);
-
-    RESULT ensure_result = ensure_dir(result);
-    if (FAILED(ensure_result)) {
-        fprintf(stderr, "Error: Failed to create or access config directory: %s\n", result_to_string(ensure_result));
-        if (result)
-            fprintf(stderr, "Attempted directory: %s\n", result);
-        free(result);
-        result = nullptr;
-    }
-
-    return result;
-}
-
 static RESULT verify_runtime(nonnull_charp runtime_path) {
     autofree char *versions_txt_path = nullptr;
     autofree char *pv_verify_path = nullptr;
@@ -250,7 +208,7 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
     }
 
     autofree char *entry_point = nullptr;
-    join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
 
     if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
@@ -299,8 +257,8 @@ static RESULT setup_runtime(const struct options *opts) {
     autofree char *runtime_path = nullptr;
     struct stat st;
 
-    join_paths(archive_path, g_yawl_dir, RUNTIME_ARCHIVE_NAME);
-    join_paths(runtime_path, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
+    join_paths(archive_path, config::yawl_dir, RUNTIME_ARCHIVE_NAME);
+    join_paths(runtime_path, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
 
     if (!(stat(runtime_path, &st) == 0 && S_ISDIR(st.st_mode))) {
         LOG_INFO("Installing runtime...");
@@ -369,7 +327,7 @@ static RESULT setup_runtime(const struct options *opts) {
             }
 
             LOG_INFO("Extracting runtime...");
-            success = extract_archive(archive_path, g_yawl_dir);
+            success = extract_archive(archive_path, config::yawl_dir);
             if (FAILED(success)) {
                 LOG_RESULT(LOG_ERROR, success, "Failed to extract runtime");
                 unlink(archive_path);
@@ -453,7 +411,7 @@ static RESULT create_config_file(nonnull_charp config_name, const struct options
     RESULT result = RESULT_OK;
 
     /* Build the config file path */
-    join_paths(config_path, g_config_dir, config_name);
+    join_paths(config_path, config::config_dir, config_name);
     append_sep(config_path, "", CONFIG_EXTENSION);
 
     /* Open the config file */
@@ -587,7 +545,7 @@ static RESULT load_config(nonnull_charp config_name, struct options *opts) {
         config_path = strdup(config_name);
     } else {
         /* Build the config file path in the standard location */
-        join_paths(config_path, g_config_dir, config_name);
+        join_paths(config_path, config::config_dir, config_name);
 
         /* Add extension if not already present */
         if (!strstr(config_name, CONFIG_EXTENSION))
@@ -642,12 +600,12 @@ int main(int argc, char *argv[]) {
     }
 
     /* Setup global directories first */
-    if (!(g_yawl_dir = setup_prog_dir())) {
+    if (FAILED(config::setup_prog_dir())) {
         fprintf(stderr, "The program directory is unusable\n");
         return 1;
     }
 
-    if (!(g_config_dir = setup_config_dir())) {
+    if (FAILED(config::setup_config_dir())) {
         fprintf(stderr, "The configuration directory is unusable\n");
         return 1;
     }
@@ -658,7 +616,7 @@ int main(int argc, char *argv[]) {
     if (FAILED(result) && (RESULT_CODE(result) != E_CANCELED))
         fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
 
-    LOG_DEBUG(PROG_NAME " directories initialized - g_yawl_dir: %s, g_config_dir: %s", g_yawl_dir, g_config_dir);
+    LOG_DEBUG(PROG_NAME " directories initialized - yawl_dir: %s, config_dir: %s", config::yawl_dir, config::config_dir);
 
     struct options opts = {};
     opts.exec_path = strdup(DEFAULT_EXEC_PATH);
@@ -739,7 +697,7 @@ int main(int argc, char *argv[]) {
     }
 
     char *entry_point = nullptr;
-    join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
     if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
         return 1;

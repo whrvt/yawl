@@ -19,10 +19,11 @@
 #define G_LOG_DOMAIN "json-glib"
 #include "json-glib/json-glib.h"
 
-#include "macros.hpp"
 #include "log.hpp"
+#include "macros.hpp"
 #include "update.hpp"
 #include "util.hpp"
+#include "yawlconfig.hpp"
 
 #define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/" PROG_NAME "/releases/latest"
 #define GITHUB_RELEASES_PAGE_URL PACKAGE_URL "/releases/download"
@@ -190,7 +191,7 @@ static RESULT copy_file(const char *source, const char *destination) {
     RESULT result = RESULT_OK;
 
     autofree char *backup_file = nullptr;
-    join_paths(backup_file, g_yawl_dir, PROG_NAME BACKUP_SUFFIX);
+    join_paths(backup_file, config::yawl_dir, PROG_NAME BACKUP_SUFFIX);
 
     if (access(destination, F_OK) == 0) {
         if (access(backup_file, F_OK) == 0)
@@ -320,7 +321,7 @@ static RESULT check_for_updates(void) {
     LOG_INFO("Checking for updates...");
 
     /* Download release information */
-    join_paths(release_file, g_yawl_dir, RELEASE_INFO_FILE);
+    join_paths(release_file, config::yawl_dir, RELEASE_INFO_FILE);
     result = download_file(GITHUB_API_RELEASES_URL, release_file, headers);
     if (FAILED(result)) {
         LOG_RESULT(LOG_ERROR, result, "Failed to download release information");
@@ -363,7 +364,7 @@ static RESULT perform_update(void) {
     RESULT result;
 
     /* Get the download URL from the saved file */
-    join_paths(release_file, g_yawl_dir, RELEASE_INFO_FILE);
+    join_paths(release_file, config::yawl_dir, RELEASE_INFO_FILE);
 
     autoclose FILE *fp = fopen(release_file, "r");
     if (!fp)
@@ -398,8 +399,8 @@ static RESULT perform_update(void) {
 
     /* Use yawl_dir if exec dir is unwritable */
     if (!download_dir) {
-        LOG_DEBUG("Using yawl directory for download: %s", g_yawl_dir);
-        join_paths(temp_binary, g_yawl_dir, NEW_BINARY_FILE);
+        LOG_DEBUG("Using yawl directory for download: %s", config::yawl_dir);
+        join_paths(temp_binary, config::yawl_dir, NEW_BINARY_FILE);
     }
 
     LOG_INFO("Downloading update from %s", download_url, temp_binary);

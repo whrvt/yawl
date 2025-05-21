@@ -32,6 +32,7 @@ typedef int32_t RESULT;
 
 /* Success result */
 #define RESULT_OK ((RESULT)0)
+#define RESULT_FAIL ((RESULT)-1) /* Only use for fatal errors */
 
 /* Error categories */
 #define CAT_GENERAL 0

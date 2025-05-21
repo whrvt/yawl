@@ -7,17 +7,18 @@
  * See the full license text in the repository LICENSE file.
  */
 
+#include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <assert.h>
 
 #define G_LOG_DOMAIN "libnotify"
 #include "libnotify/notify.h"
 
 #include "log.hpp"
 #include "util.hpp"
+#include "yawlconfig.hpp"
 
 static FILE *log_file = nullptr;
 static log_level_t current_log_level = LOG_INFO;
@@ -41,7 +42,9 @@ static_assert(sizeof(level_strings) == sizeof(level_colors), "each log level str
 
 /* Parse log level from string */
 static log_level_t parse_log_level(const char *level_str) {
-    if (!level_str || (strlen(level_str) > (sizeof("error") - 1UL))) /* longest error level string (not including "SYSTEM" since that's reserved for always-shown notifications) */
+    if (!level_str ||
+        (strlen(level_str) > (sizeof("error") - 1UL))) /* longest error level string (not including "SYSTEM" since
+                                                          that's reserved for always-shown notifications) */
         return LOG_INFO;
 
     log_level_t level = LOG_INFO;
@@ -82,7 +85,7 @@ RESULT log_init(void) {
     if (log_file_env)
         log_file_path = strdup(log_file_env);
     else
-        join_paths(log_file_path, g_yawl_dir, PROG_NAME ".log");
+        join_paths(log_file_path, config::yawl_dir, PROG_NAME ".log");
 
     if (log_file_path || !terminal_output) {
         log_file = fopen(log_file_path, "a");

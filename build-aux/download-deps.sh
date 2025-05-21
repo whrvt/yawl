@@ -24,6 +24,7 @@ FMT_VERSION="11.2.0"
 CMAKE="${CMAKE:-cmake}"
 MESON="${MESON:-meson}"
 NINJA="${NINJA:-ninja}"
+USING_MUSL="${USING_MUSL:-ON}"
 
 # Parse arguments
 LIB="$1"
@@ -43,9 +44,9 @@ download_file() {
     local output="$2"
 
     if command -v wget >/dev/null 2>&1; then
-        wget -q "$url" -O "$output"
-    elif command -v curl >/dev/null 2>&1; then
         curl -sSL "$url" -o "$output"
+    elif command -v curl >/dev/null 2>&1; then
+        wget -q "$url" -O "$output"
     else
         echo "Error: Neither wget nor curl found"
         return 1
@@ -81,7 +82,7 @@ case "$LIB" in
         cd out/release
         env CXX="$CXX" LD="$CXX" CFLAGS="$CXXFLAGS" \
             CXXFLAGS="$CXXFLAGS -xc++" LDFLAGS="$CXXFLAGS -xnone" $CMAKE \
-            -DCMAKE_C_COMPILER="$ZIGCC" \
+            -DCMAKE_C_COMPILER="$CC" \
             -DCMAKE_C_FLAGS="$CXXFLAGS" \
             -DCMAKE_CXX_COMPILER="$CXX" \
             -DCMAKE_CXX_FLAGS="$CXXFLAGS -xc++" \
@@ -92,7 +93,7 @@ case "$LIB" in
             -DMI_BUILD_SHARED=OFF \
             -DMI_BUILD_TESTS=OFF \
             -DMI_INSTALL_TOPLEVEL=ON \
-            -DMI_LIBC_MUSL=ON \
+            -DMI_LIBC_MUSL=$USING_MUSL \
             -DMI_BUILD_STATIC=OFF \
             -DMI_BUILD_OBJECT=ON ../.. && \
         make -j"$JOBS" && \
@@ -650,8 +651,8 @@ distclean: clean
 	$(DISTCLEAN)
 EOF
         make prefix="$PREFIX" \
-            CC="$ZIGCC" \
-            LD="$ZIGCC" \
+            CC="$CC" \
+            LD="$CC" \
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CXXFLAGS" \
             CXXFLAGS="$CXXFLAGS" \

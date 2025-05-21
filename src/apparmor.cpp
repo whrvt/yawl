@@ -14,6 +14,7 @@
 #include "log.hpp"
 #include "macros.hpp"
 #include "util.hpp"
+#include "yawlconfig.hpp"
 
 #define APPARMOR_DIR "/etc/apparmor.d"
 #define APPARMOR_PROFILE_NAME "bwrap-userns-restrict-" PROG_NAME
@@ -29,8 +30,8 @@ static RESULT test_container(const char *entry_point) {
     int ret = 0;
     int apparmor_issue = 0;
 
-    join_paths(stdout_file, g_yawl_dir, "test_stdout.tmp");
-    join_paths(stderr_file, g_yawl_dir, "test_stderr.tmp");
+    join_paths(stdout_file, config::yawl_dir, "test_stdout.tmp");
+    join_paths(stderr_file, config::yawl_dir, "test_stderr.tmp");
 
     append_sep(test_cmd, " ", entry_point, "--verb=waitforexitandrun", "--", "/bin/true", ">", stdout_file, "2>",
                stderr_file);
@@ -78,7 +79,7 @@ static RESULT write_temp_apparmor_profile(char *temp_path[]) {
     autoclose FILE *fp = nullptr;
 
     /* Create a temporary file in the yawl directory */
-    join_paths(*temp_path, g_yawl_dir, APPARMOR_PROFILE_NAME ".tmp");
+    join_paths(*temp_path, config::yawl_dir, APPARMOR_PROFILE_NAME ".tmp");
 
     LOG_DEBUG("Writing temporary AppArmor profile to: %s", *temp_path);
 

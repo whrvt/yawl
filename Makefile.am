@@ -1,12 +1,15 @@
-AUTOMAKE_OPTIONS = foreign
+AUTOMAKE_OPTIONS := foreign
 
-bin_PROGRAMS = yawl
+bin_PROGRAMS := yawl
 
-yawl_SOURCES = src/yawl.cpp src/util.cpp src/apparmor.cpp src/log.cpp src/result.cpp src/update.cpp src/nsenter.cpp
-#yawl_CXXFLAGS = -O0 -flto=full -ffunction-sections -fdata-sections -fsanitize=address,undefined,cfi,safe-stack -fvisibility=hidden
-yawl_CXXFLAGS = -Os -flto=full -ffunction-sections -fdata-sections -Wl,--gc-sections,-s
-yawl_LDFLAGS = $(yawl_CXXFLAGS)
-yawl_LDADD = $(NON_GLIB_LIBS) $(ALL_GLIB_LIBS)
+yawl_SOURCES := src/yawl.cpp src/util.cpp src/apparmor.cpp src/log.cpp src/result.cpp src/update.cpp src/nsenter.cpp src/yawlconfig.cpp
+if USE_ASAN
+yawl_CXXFLAGS := -march=x86-64 -mtune=generic -Og -ggdb -gdwarf-4 -fsanitize=address,undefined,cfi -fvisibility=hidden -Wno-backend-plugin
+else
+yawl_CXXFLAGS := -march=x86_64 -mtune=x86_64 -static-libgcc -fno-rtti -fno-exceptions -static-libstdc++ -static -fPIC -fPIE -static-pie -Os -ffunction-sections -fdata-sections -Wl,--gc-sections,-s
+endif
+yawl_LDFLAGS := $(yawl_CXXFLAGS)
+yawl_LDADD := $(NON_GLIB_LIBS) $(ALL_GLIB_LIBS)
 
 EXTRA_DIST = README.md assets/external/bwrap-userns-restrict assets/external/cacert.pem
 
