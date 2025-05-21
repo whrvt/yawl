@@ -170,7 +170,7 @@ shared_includes="-D_GNU_SOURCE -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -U_FORTIFY
 shared_flags="-fwrapv -fno-strict-aliasing -ffat-lto-objects -fno-exceptions \
     -ffunction-sections -fdata-sections -pthread -fcf-protection=full -fstack-clash-protection -fstack-protector-all \
     -static-libgcc -static -fPIC -fPIE -static-libasan -L$deps_prefix/lib -Wl,--gc-sections -Wl,-z,noexecstack \
-    -Wno-date-time -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+    -Wno-date-time -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed"
 export CPPFLAGS="$shared_includes"
 export CFLAGS="-I$musl_compat -I$musl_compat2 $shared_includes $shared_flags -Oz -flto=auto -march=x86-64 -mtune=generic"
 export CXXFLAGS="$shared_includes $shared_flags -Os -flto=thin -march=x86_64 -mtune=x86_64 -static-libstdc++"
@@ -206,6 +206,8 @@ then
     AC_MSG_ERROR([Could not find the sys/vfs.h header])
 fi
 
+export CMAKE NINJA MESON
+
 # Download and build mimalloc (to replace the slow musl malloc)
 if ! test -f "$build_prefix/lib/mimalloc.o"; then
     AC_MSG_NOTICE([Building mimalloc])
@@ -224,8 +226,6 @@ AC_SUBST([CFLAGS])
 AC_SUBST([CXXFLAGS])
 AC_SUBST([LDFLAGS])
 AC_SUBST([LD])
-
-export CMAKE NINJA MESON
 
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$build_prefix/lib/libunistring.a"; then
@@ -399,7 +399,7 @@ CXXFLAGS="-std=gnu++26 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-
     -static-libgcc -static -fPIC -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection \
     -fstack-protector-all -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
     -Wno-nullability-extension -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wl,-z,noexecstack \
-    -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+    -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -pthread"
 CFLAGS="$CXXFLAGS"
 LDFLAGS="$CXXFLAGS -xnone"
 

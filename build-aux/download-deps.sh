@@ -21,6 +21,10 @@ LIBARCHIVE_VERSION="3.7.7"
 LIBCAP_VERSION="2.27" # Newer versions have useless Go stuff
 FMT_VERSION="11.2.0"
 
+CMAKE="${CMAKE:-cmake}"
+MESON="${MESON:-meson}"
+NINJA="${NINJA:-ninja}"
+
 # Parse arguments
 LIB="$1"
 BUILDDIR="$2"
