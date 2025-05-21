@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - master
+      - dev
     tags:
       - v*.*.*
 
@@ -63,6 +64,14 @@ jobs:
       run: |
         pacman -Syu --noconfirm
         pacman -S --noconfirm cmake python musl meson git
+    - name: Cache build-time dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ./deps/yawl
+        key: deps-${{ hashFiles('configure.ac') }}
+        restore-keys: |
+          deps-
     - name: Build
       shell: bash
       run: |
