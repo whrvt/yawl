@@ -20,6 +20,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref_type }}
   cancel-in-progress: true
 
+env:
+  CCACHE_DIR: /ccache
 
 jobs:
   version:
@@ -64,11 +66,12 @@ jobs:
       run: |
         pacman -Syu --noconfirm
         pacman -S --noconfirm cmake python musl meson git ccache
+        mkdir ${{ env.CCACHE_DIR }}
     - name: ccache
       uses: actions/cache@v4
       with:
         path: |
-          ~/.ccache
+          ${{ env.CCACHE_DIR }}
         key: ccache-${{ github.workflow }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ github.workflow }}-

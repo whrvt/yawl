@@ -662,7 +662,6 @@ EOF
         ;;
 
     fmt)
-        # Required for nsenter
         if [ ! -d "fmt-$FMT_VERSION" ]; then
             echo "Downloading fmt-$FMT_VERSION..."
             download_file "https://github.com/fmtlib/fmt/archive/refs/tags/$FMT_VERSION.tar.gz" "fmt.tar.gz"
