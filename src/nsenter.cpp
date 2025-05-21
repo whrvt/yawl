@@ -139,9 +139,9 @@ static inline int pidfd_getfd(int pidfd __attribute__((unused)), int targetfd __
 /* yawl-specific defines */
 
 #include "capability.h"
-#include "log.h"
-#include "nsenter.h"
-#include "macros.h"
+#include "log.hpp"
+#include "nsenter.hpp"
+#include "macros.hpp"
 
 #define LOG_ERROR_AND_RETURN(...)                                                                                      \
     do {                                                                                                               \

@@ -15,11 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "result.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "result.hpp"
 
 #define PROG_NAME "yawl"
 #define CONFIG_DIR "configs"
@@ -99,6 +95,4 @@ extern const char *g_yawl_dir;
 /* The global configuration path, set at startup in main() */
 extern const char *g_config_dir;
 
-#ifdef __cplusplus
-}
-#endif
+

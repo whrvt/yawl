@@ -13,9 +13,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+
 
 #define forceinline __attribute__((always_inline)) inline
 
@@ -54,6 +52,4 @@ static forceinline void cleanup_unlink_and_free(void *p) {
 
 #define nonnull_charp [[gnu::nonnull]] const char *_Nonnull
 
-#ifdef __cplusplus
-}
-#endif
+

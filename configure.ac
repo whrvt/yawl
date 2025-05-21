@@ -1,7 +1,7 @@
 AC_INIT([yawl], [0.6.8], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
-AC_CONFIG_SRCDIR([src/yawl.c])
+AC_CONFIG_SRCDIR([src/yawl.cpp])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_PREFIX_DEFAULT([dist]) # default `make install`s to ./dist/bin/ (modify with --prefix=)
@@ -34,6 +34,8 @@ if test -z $ZIG; then
         sh build-aux/download-deps.sh zig "$build_prefix" "${build_prefix}/zig" || AC_MSG_ERROR([Failed to install zig])
     fi
 fi
+
+AC_SUBST([ZIG_REALPATH],[$build_prefix/zig/zig])
 
 install -Dm755 /dev/stdin "$build_prefix"/zigcc <<EOF
 #!/usr/bin/env sh
@@ -89,6 +91,28 @@ AC_DEFUN([AC_PROG_AR], [
     fi
 ])
 AC_PROG_AR
+
+AC_DEFUN([AC_PROG_CMAKE], [
+    AC_CHECK_PROG([CMAKE], [cmake], [cmake])
+    if test -z "$CMAKE"; then
+        AC_MSG_ERROR([cmake not found - required for building dependencies])
+    fi
+])
+AC_PROG_CMAKE
+AC_DEFUN([AC_PROG_MESON], [
+    AC_CHECK_PROG([MESON], [meson], [meson])
+    if test -z "$MESON"; then
+        AC_MSG_ERROR([meson not found - required for building dependencies])
+    fi
+])
+AC_PROG_MESON
+AC_DEFUN([AC_PROG_NINJA], [
+    AC_CHECK_PROG([NINJA], [ninja], [ninja])
+    if test -z "$NINJA"; then
+        AC_MSG_ERROR([ninja not found - required for building dependencies])
+    fi
+])
+AC_PROG_NINJA
 
 AC_PROG_RANLIB
 
@@ -200,6 +224,8 @@ AC_SUBST([CFLAGS])
 AC_SUBST([CXXFLAGS])
 AC_SUBST([LDFLAGS])
 AC_SUBST([LD])
+
+export CMAKE NINJA MESON
 
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$build_prefix/lib/libunistring.a"; then
@@ -314,6 +340,14 @@ if ! test -f "$build_prefix/lib/libcap.a"; then
     cp $deps_prefix/include/capability.h $build_prefix/include; } || AC_MSG_ERROR([Failed to build libcap])
 fi
 
+# Download and build fmtlib headers (for better string formatting)
+if ! test -f "$build_prefix/include/fmt/format.h"; then
+    AC_MSG_NOTICE([Building libfmt])
+    { sh build-aux/download-deps.sh fmt "$deps_builddir" "$deps_prefix" &&
+    cp $deps_prefix/lib/libfmt.a $build_prefix/lib/ &&
+    cp -r $deps_prefix/include/fmt $build_prefix/include/; } || AC_MSG_ERROR([Failed to build libfmt])
+fi
+
 # Now download the CA certificate bundle to embed and use with curl
 if ! test -f "$PWD/assets/external/cacert.pem"; then
     AC_MSG_NOTICE([Downloading CA certificate bundle for curl])
@@ -337,8 +371,9 @@ COMMON_DEP_LIBS="-lcap -lidn2 -lpsl -lunistring -lz -llzma -lzstd"
 CURL_LIBS="-lcurl"
 LIBARCHIVE_LIBS="-larchive"
 OPENSSL_LIBS="-lssl -lcrypto"
+FMT_LIBS="-lfmt"
 
-NON_GLIB_LIBS="$build_prefix/lib/mimalloc.o -L$build_prefix/lib $CURL_LIBS $LIBARCHIVE_LIBS $OPENSSL_LIBS $COMMON_DEP_LIBS"
+NON_GLIB_LIBS="$build_prefix/lib/mimalloc.o -L$build_prefix/lib $FMT_LIBS $CURL_LIBS $LIBARCHIVE_LIBS $OPENSSL_LIBS $COMMON_DEP_LIBS"
 
 GLIB_CPPFLAGS="-I$build_prefix/include/glib-2.0 -DPCRE2_STATIC"
 GDK_PIXBUF_CPPFLAGS="-I$build_prefix/include/gdk-pixbuf-2.0"
@@ -353,14 +388,14 @@ JSON_GLIB_LIBS="-ljson-glib-1.0"
 
 ALL_GLIB_LIBS="$JSON_GLIB_LIBS $LIBNOTIFY_LIBS $GDK_PIXBUF_LIBS $GLIB_LIBS"
 
-AC_LANG(C++)
+AC_LANG_PUSH([C++])
 export CXX="$ZIGCPP"
 export CC="$ZIGCPP"
 export LD="$ZIGCPP"
 
 # Shared flags/libraries for all targets
 CPPFLAGS="-D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-CXXFLAGS="-xc++ --std=gnu++23 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing -fno-rtti -fno-exceptions -static-libstdc++ \
+CXXFLAGS="-std=gnu++26 -march=x86_64 -mtune=x86_64 -pthread -fwrapv -fno-strict-aliasing -fno-rtti -fno-exceptions -static-libstdc++ \
     -static-libgcc -static -fPIC -fPIE -static-pie -static-libsan -fcf-protection=full -fstack-protector -fstack-clash-protection \
     -fstack-protector-all -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
     -Wno-nullability-extension -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wl,-z,noexecstack \

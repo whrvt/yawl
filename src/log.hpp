@@ -11,11 +11,9 @@
 
 #include <unistd.h>
 
-#include "result.h"
+#include "result.hpp"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+
 
 typedef enum {
     LOG_NONE = 0,
@@ -64,6 +62,4 @@ void log_progress_end(void);
 #define LOG_RESULT(level, result, context) _log_result(level, __FILE__, __LINE__, result, context)
 #define LOG_DEBUG_RESULT(result, context) _log_result(LOG_DEBUG, __FILE__, __LINE__, result, context)
 
-#ifdef __cplusplus
-}
-#endif
+

@@ -10,10 +10,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "apparmor.h"
-#include "log.h"
-#include "macros.h"
-#include "util.h"
+#include "apparmor.hpp"
+#include "log.hpp"
+#include "macros.hpp"
+#include "util.hpp"
 
 #define APPARMOR_DIR "/etc/apparmor.d"
 #define APPARMOR_PROFILE_NAME "bwrap-userns-restrict-" PROG_NAME

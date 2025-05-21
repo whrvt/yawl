@@ -11,9 +11,7 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+
 
 /*
  * RESULT bit layout:
@@ -107,6 +105,4 @@ const char *result_to_string(RESULT result);
     (FAILED(result) ? MAKE_RESULT(RESULT_SEVERITY(result), new_cat, RESULT_CODE(result)) : (result))
  */
 
-#ifdef __cplusplus
-}
-#endif
+

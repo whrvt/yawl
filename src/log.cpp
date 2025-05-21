@@ -11,12 +11,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <assert.h>
 
 #define G_LOG_DOMAIN "libnotify"
 #include "libnotify/notify.h"
 
-#include "log.h"
-#include "util.h"
+#include "log.hpp"
+#include "util.hpp"
 
 static FILE *log_file = nullptr;
 static log_level_t current_log_level = LOG_INFO;
@@ -36,9 +37,11 @@ static constexpr const char *const level_strings[] = {"\0", "SYSTEM", "ERROR", "
 static constexpr const char *const level_colors[] = {"\0",        COLOR_SYSTEM, COLOR_RED, COLOR_YELLOW,
                                                      COLOR_GREEN, COLOR_BLUE,   COLOR_CYAN};
 
+static_assert(sizeof(level_strings) == sizeof(level_colors), "each log level string should have a corresponding color");
+
 /* Parse log level from string */
 static log_level_t parse_log_level(const char *level_str) {
-    if (!level_str || (strlen(level_str) > (sizeof("error") - 1UL))) /* longest error level string */
+    if (!level_str || (strlen(level_str) > (sizeof("error") - 1UL))) /* longest error level string (not including "SYSTEM" since that's reserved for always-shown notifications) */
         return LOG_INFO;
 
     log_level_t level = LOG_INFO;
@@ -141,10 +144,10 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
 
     if (level == LOG_SYSTEM && notify_initialized) {
         NotifyNotification *notif;
-        char *message;
+        char *message = nullptr;
 
         va_start(args, format);
-        vasprintf(&message, format, args);
+        assert(!vasprintf(&message, format, args)); // glibc compatibility
         va_end(args);
 
         notif = notify_notification_new(PROG_NAME, message, "dialog-information");

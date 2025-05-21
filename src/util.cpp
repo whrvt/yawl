@@ -16,10 +16,10 @@
 #include "archive.h"
 #include "archive_entry.h"
 #include "curl/curl.h"
-#include "log.h"
-#include "macros.h"
+#include "log.hpp"
+#include "macros.hpp"
 #include "openssl/evp.h"
-#include "util.h"
+#include "util.hpp"
 
 void _append_sep_impl(char *result_ptr[], const char *separator, size_t num_strings, ...) {
     char *old_result = *result_ptr;

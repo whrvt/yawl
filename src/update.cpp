@@ -7,6 +7,8 @@
  * See the full license text in the repository LICENSE file.
  */
 
+#include "config.h"
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,11 +19,10 @@
 #define G_LOG_DOMAIN "json-glib"
 #include "json-glib/json-glib.h"
 
-#include "macros.h"
-#include "config.h"
-#include "log.h"
-#include "update.h"
-#include "util.h"
+#include "macros.hpp"
+#include "log.hpp"
+#include "update.hpp"
+#include "util.hpp"
 
 #define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/" PROG_NAME "/releases/latest"
 #define GITHUB_RELEASES_PAGE_URL PACKAGE_URL "/releases/download"

@@ -16,13 +16,18 @@
 #include <string.h>
 #include <sys/prctl.h>
 
-#include "apparmor.h"
-#include "log.h"
-#include "macros.h"
-#include "nsenter.h"
-#include "result.h"
-#include "update.h"
-#include "util.h"
+#include "apparmor.hpp"
+#include "log.hpp"
+#include "macros.hpp"
+#include "nsenter.hpp"
+#include "result.hpp"
+#include "update.hpp"
+#include "util.hpp"
+
+#include "fmt/core.h"
+#include "fmt/compile.h"
+
+using namespace fmt::literals;
 
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
 #define RUNTIME_VERSION "sniper"
@@ -37,34 +42,33 @@
 const char *g_yawl_dir;
 const char *g_config_dir;
 
-static constexpr const char *const usage_text =
-    R"_(Usage: %s [args_for_executable...]
+static void print_usage() {
+    fmt::print(R"_(Usage: {2} [args_for_executable...]
 Environment variables:
-  YAWL_VERBS       Semicolon-separated list of verbs to control )_" PROG_NAME R"_( behavior:
-                   - 'version'   Just print the version of )_" PROG_NAME R"_( and exit
+  YAWL_VERBS       Semicolon-separated list of verbs to control {0} behavior:
+                   - 'version'   Just print the version of {0} and exit
                    - 'verify'    Verify the runtime before running (default: only verify after install)
                                  Also can be used to check for runtime updates (will be a separate option in the future)
                    - 'reinstall' Force reinstallation of the runtime
                    - 'help'      Display this help and exit
-                   - 'check'     Check for updates to )_" PROG_NAME R"_( (without downloading/installing)
+                   - 'check'     Check for updates to {0} (without downloading/installing)
                    - 'update'    Check for, download, and install available updates
-                   - 'exec=PATH' Set the executable to run in the container (default: )_" DEFAULT_EXEC_PATH R"_()
+                   - 'exec=PATH' Set the executable to run in the container (default: {1})
                    - 'make_wrapper=NAME' Create a wrapper configuration and symlink
                    - 'config=NAME'       Use a specific configuration file
                    - 'wineserver=PATH'   Set the wineserver executable path when creating a wrapper
                    - 'enter=PID'         Run an executable in the same container as PID
 
             Examples:
-                YAWL_VERBS="make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver" %s
-                YAWL_VERBS="verify;reinstall" %s winecfg
-                YAWL_VERBS="exec=/opt/wine/bin/wine64" %s winecfg
-                YAWL_VERBS="make_wrapper=cool-wine;exec=/opt/wine/bin/wine64" %s
-                YAWL_VERBS="enter=$(pgrep game.exe)" %s cheatengine.exe
+                YAWL_VERBS="make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver" {2}
+                YAWL_VERBS="verify;reinstall" {2} winecfg
+                YAWL_VERBS="exec=/opt/wine/bin/wine64" {2} winecfg
+                YAWL_VERBS="make_wrapper=cool-wine;exec=/opt/wine/bin/wine64" {2}
+                YAWL_VERBS="enter=$(pgrep game.exe)" {2} cheatengine.exe
 
-  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/)_" PROG_NAME
-    R"_( or $HOME/.local/share/)_" PROG_NAME R"_(
+  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/{0} or $HOME/.local/share/{0}
             Example:
-                YAWL_INSTALL_DIR="$HOME/programs/winelauncher" YAWL_VERBS="reinstall" %s
+                YAWL_INSTALL_DIR="$HOME/programs/winelauncher" YAWL_VERBS="reinstall" {2}
 
   YAWL_LOG_LEVEL   Control the verbosity of the logging output. Valid values are:
                    - 'none'     Turn off all logging
@@ -75,13 +79,8 @@ Environment variables:
 
   YAWL_LOG_FILE    Specify a custom path for the log file. By default, logs are written to:
                    - Terminal output (only when running interactively)
-                   - $YAWL_INSTALL_DIR/)_" PROG_NAME R"_(.log
-)_";
-
-static void print_usage() {
-    printf(usage_text, program_invocation_short_name, program_invocation_short_name, program_invocation_short_name,
-           program_invocation_short_name, program_invocation_short_name, program_invocation_short_name,
-           program_invocation_short_name); // lol
+                   - $YAWL_INSTALL_DIR/{0}.log
+)_"_cf, PROG_NAME, DEFAULT_EXEC_PATH, program_invocation_short_name);
 }
 
 struct options {

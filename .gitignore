@@ -41,5 +41,7 @@ engines-3/
 *.swp
 .vscode/
 compile_commands.json
+bear.cfg
 
 garbage/
+

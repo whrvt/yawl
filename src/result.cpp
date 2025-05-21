@@ -12,7 +12,7 @@
 #include <string.h>
 
 #include "curl/curl.h"
-#include "result.h"
+#include "result.hpp"
 
 RESULT result_from_errno(void) {
     if (errno == 0)
