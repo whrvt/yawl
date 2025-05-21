@@ -10,19 +10,10 @@ yawl_LDADD = $(NON_GLIB_LIBS) $(ALL_GLIB_LIBS)
 
 EXTRA_DIST = README.md assets/external/bwrap-userns-restrict assets/external/cacert.pem
 
-compile_commands.json: clean
-	@bear --version || { echo bear is unavailable to generate a compile_commands.json, install bear && exit 1; }
-	@(echo '{'; \
-	  echo '"compilation": {'; \
-	  echo '"compilers_to_recognize": ['; \
-	  echo '{'; \
-	  echo '"executable": "$(ZIG_REALPATH)"'; \
-	  echo '}'; \
-	  echo ']'; \
-	  echo '}'; \
-	  echo '}' ) > bear.cfg
-	bear --config bear.cfg --append -- $(MAKE) $(AM_MAKEFLAGS) all-am
-	@sed -i -e 's|.*-march=.*||' -e 's|.*-mtune=.*||' compile_commands.json # zig annoyingly uses underscores here
+compile_commands.json: mostlyclean-compile
+	@python --version &>/dev/null || { echo python is unavailable to generate a compile_commands.json, install python && exit 1; }
+	$(MAKE) ZIG_VERBOSE_CC=1 $(AM_MAKEFLAGS) $(yawl_OBJECTS) $(yawl_DEPENDENCIES) $(EXTRA_yawl_DEPENDENCIES) 2>collect.log && \
+	python $(abs_top_srcdir)/build-aux/zig-cc-db-parser.py collect.log && rm collect.log
 
 $(abs_top_srcdir)/.clangd: compile_commands.json
 	@if [ -f $@ ]; then \
@@ -51,4 +42,3 @@ clean-deps:
 
 maintainer-clean-local: clean-deps
 
-distclean-local: clean-deps

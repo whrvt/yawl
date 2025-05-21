@@ -63,20 +63,31 @@ jobs:
       shell: bash
       run: |
         pacman -Syu --noconfirm
-        pacman -S --noconfirm cmake python musl meson git
+        pacman -S --noconfirm cmake python musl meson git ccache
+    - name: ccache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.ccache
+        key: ccache-${{ github.workflow }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ github.workflow }}-
     - name: Cache build-time dependencies
       uses: actions/cache@v4
       with:
         path: |
           ./deps/yawl
-        key: deps-${{ hashFiles('configure.ac') }}
+        key: deps-${{ github.workflow }}-${{ hashFiles('configure.ac') }}
         restore-keys: |
-          deps-
-    - name: Build
+          deps-${{ github.workflow }}-
+    - name: Configure
       shell: bash
       run: |
         ./autogen.sh
         ./configure
+    - name: Build
+      shell: bash
+      run: |
         make
     - uses: actions/upload-artifact@v4
       with:

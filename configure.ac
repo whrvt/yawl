@@ -1,6 +1,5 @@
 AC_INIT([yawl], [0.6.8], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
 AC_CONFIG_AUX_DIR([build-aux])
-AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_SRCDIR([src/yawl.cpp])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
@@ -10,44 +9,71 @@ AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
 
+AM_INIT_AUTOMAKE([foreign subdir-objects parallel-tests])
+AM_SILENT_RULES([yes])
+
+top_srcdir_actual="$am_aux_dir/.." # autotools!
+
 # Set up build directories
-deps_builddir="$PWD/deps/build"
-deps_prefix="$PWD/deps/prefix"
-build_prefix="$PWD/deps/yawl"
+deps_builddir="$top_srcdir_actual/deps/build"
+deps_prefix="$top_srcdir_actual/deps/prefix"
+build_prefix="$top_srcdir_actual/deps/yawl"
 mkdir -p "$deps_builddir" "$deps_prefix"/{lib,include} "$build_prefix/"{lib,include} "$PWD/dist/bin"
 
-export cch="$PWD/build-aux/muslconfig.cache"
+export cch="$am_aux_dir/muslconfig.cache"
 AC_SUBST([cch])
 
 # Make some wrapper shims for the dependencies to compile happily
-export PATH="${build_prefix}:${build_prefix}/zig:${PWD}/build-aux:${PATH}"
+export PATH="${build_prefix}:${build_prefix}/zig:$am_aux_dir:${PATH}"
 AC_SUBST([PATH])
+
+rm -f "$build_prefix"/{musl-gcc,zigcc*,zigcpp*} # clear out existing ccache wrappers
+
+AC_PATH_PROG([CCACHE], [ccache], [])
 
 AC_PROG_CC([musl-gcc])
 if test -z "$CC"; then
     AC_MSG_ERROR([musl-gcc not found])
 fi
 
+AC_PATH_PROG([CC_REAL], [musl-gcc])
+install -Dm755 /dev/stdin "$build_prefix"/musl-gcc <<EOF
+#!/usr/bin/env sh
+$CCACHE $CC_REAL "\$@"
+EOF
+
 if test -z $ZIG; then
     if ! test -x "${build_prefix}/zig/zig"; then
         AC_MSG_NOTICE([Downloading zig])
-        sh build-aux/download-deps.sh zig "$build_prefix" "${build_prefix}/zig" || AC_MSG_ERROR([Failed to install zig])
+        sh $am_aux_dir/download-deps.sh zig "$build_prefix" "${build_prefix}/zig" || AC_MSG_ERROR([Failed to install zig])
     fi
 fi
 
 AC_SUBST([ZIG_REALPATH],[$build_prefix/zig/zig])
 
-install -Dm755 /dev/stdin "$build_prefix"/zigcc <<EOF
+install -Dm755 /dev/stdin "$build_prefix"/zigcc-tobewrapped <<EOF
 #!/usr/bin/env sh
 zig cc -target x86_64-linux-musl -Qunused-arguments "\$@"
 EOF
+AC_PATH_PROG([ZIGCC_REAL], [zigcc-tobewrapped], [ path = "${build_prefix}" ])
+install -Dm755 /dev/stdin "$build_prefix"/zigcc <<EOF
+#!/usr/bin/env sh
+$CCACHE $ZIGCC_REAL "\$@"
+EOF
+
 export ZIGCC="zigcc"
 AC_SUBST([ZIGCC])
 
-install -Dm755 /dev/stdin "$build_prefix"/zigcpp <<EOF
+install -Dm755 /dev/stdin "$build_prefix"/zigcpp-tobewrapped <<EOF
 #!/usr/bin/env sh
 zig c++ -target x86_64-linux-musl -Qunused-arguments "\$@"
 EOF
+AC_PATH_PROG([ZIGCPP_REAL], [zigcpp-tobewrapped], [ path = "${build_prefix}" ])
+install -Dm755 /dev/stdin "$build_prefix"/zigcpp <<EOF
+#!/usr/bin/env sh
+$CCACHE $ZIGCPP_REAL "\$@"
+EOF
+
 export ZIGCPP="zigcpp"
 AC_SUBST([ZIGCPP])
 AC_PROG_CXX([zigcpp])
@@ -211,7 +237,7 @@ export CMAKE NINJA MESON
 # Download and build mimalloc (to replace the slow musl malloc)
 if ! test -f "$build_prefix/lib/mimalloc.o"; then
     AC_MSG_NOTICE([Building mimalloc])
-    sh build-aux/download-deps.sh mimalloc "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build mimalloc])
+    sh $am_aux_dir/download-deps.sh mimalloc "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build mimalloc])
     cp $deps_prefix/lib/*malloc* $build_prefix/lib/
     cp -r $deps_prefix/include/*malloc* $build_prefix/include/
 fi
@@ -230,49 +256,49 @@ AC_SUBST([LD])
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$build_prefix/lib/libunistring.a"; then
     AC_MSG_NOTICE([Building libunistring])
-    sh build-aux/download-deps.sh libunistring "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libunistring])
+    sh $am_aux_dir/download-deps.sh libunistring "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libunistring])
     cp $deps_prefix/lib/libunistring.a $build_prefix/lib/
 fi
 
 # Download and build libidn2 (needed for curl/openssl)
 if ! test -f "$build_prefix/lib/libidn2.a"; then
     AC_MSG_NOTICE([Building libidn2])
-    sh build-aux/download-deps.sh libidn2 "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libidn2])
+    sh $am_aux_dir/download-deps.sh libidn2 "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libidn2])
     cp $deps_prefix/lib/libidn2.a $build_prefix/lib/
 fi
 
 # Download and build libpsl (needed for curl/openssl)
 if ! test -f "$build_prefix/lib/libpsl.a"; then
     AC_MSG_NOTICE([Building libpsl])
-    sh build-aux/download-deps.sh libpsl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libpsl])
+    sh $am_aux_dir/download-deps.sh libpsl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libpsl])
     cp $deps_prefix/lib/libpsl.a $build_prefix/lib/
 fi
 
 # Download and build libz
 if ! test -f "$build_prefix/lib/libz.a"; then
     AC_MSG_NOTICE([Building libz])
-    sh build-aux/download-deps.sh libz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libz])
+    sh $am_aux_dir/download-deps.sh libz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libz])
     cp $deps_prefix/lib/libz.a $build_prefix/lib/
 fi
 
 # Download and build xz
 if ! test -f "$build_prefix/lib/liblzma.a"; then
     AC_MSG_NOTICE([Building xz])
-    sh build-aux/download-deps.sh xz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build xz])
+    sh $am_aux_dir/download-deps.sh xz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build xz])
     cp $deps_prefix/lib/liblzma.a $build_prefix/lib/
 fi
 
 # Download and build zstd
 if ! test -f "$build_prefix/lib/libzstd.a"; then
     AC_MSG_NOTICE([Building zstd])
-    sh build-aux/download-deps.sh zstd "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build zstd])
+    sh $am_aux_dir/download-deps.sh zstd "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build zstd])
     cp $deps_prefix/lib/libzstd.a $build_prefix/lib/
 fi
 
 # Download and build openssl
 if ! test -f "$build_prefix/lib/libssl.a" || ! test -f "$build_prefix/lib/libcrypto.a"; then
     AC_MSG_NOTICE([Building openssl])
-    sh build-aux/download-deps.sh openssl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build openssl])
+    sh $am_aux_dir/download-deps.sh openssl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build openssl])
     cp $deps_prefix/lib/libssl.a $build_prefix/lib/
     cp $deps_prefix/lib/libcrypto.a $build_prefix/lib/
     cp -r $deps_prefix/include/openssl $build_prefix/include/
@@ -281,7 +307,7 @@ fi
 # Download and build libarchive
 if ! test -f "$build_prefix/lib/libarchive.a"; then
     AC_MSG_NOTICE([Building libarchive])
-    sh build-aux/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
+    sh $am_aux_dir/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
     cp $deps_prefix/lib/libarchive.a $build_prefix/lib/
     cp $deps_prefix/include/archive* $build_prefix/include/
 fi
@@ -289,7 +315,7 @@ fi
 # Download and build curl
 if ! test -f "$build_prefix/lib/libcurl.a"; then
     AC_MSG_NOTICE([Building curl])
-    sh build-aux/download-deps.sh curl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build curl])
+    sh $am_aux_dir/download-deps.sh curl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build curl])
     cp $deps_prefix/lib/libcurl.a $build_prefix/lib/
     cp -r $deps_prefix/include/curl $build_prefix/include/
 fi
@@ -299,21 +325,21 @@ if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/lib
     # Download and build libffi (required for gdk-pixbuf)
     if ! test -f "$deps_prefix/lib/libffi.a"; then
         AC_MSG_NOTICE([Building libffi])
-        sh build-aux/download-deps.sh libffi "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libffi])
+        sh $am_aux_dir/download-deps.sh libffi "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libffi])
     fi
     # Download and build gdk-pixbuf (only required for libnotify)
     if ! test -f "$deps_prefix/lib/libgdk_pixbuf-2.0.a"; then
         AC_MSG_NOTICE([Building gdk-pixbuf])
-        sh build-aux/download-deps.sh gdk-pixbuf "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build gdk-pixbuf])
+        sh $am_aux_dir/download-deps.sh gdk-pixbuf "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build gdk-pixbuf])
     fi
     # Download and build json-glib
     if ! test -f "$deps_prefix/lib/libjson-glib-1.0.a"; then
         AC_MSG_NOTICE([Building json-glib])
-        sh build-aux/download-deps.sh json-glib "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build json-glib])
+        sh $am_aux_dir/download-deps.sh json-glib "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build json-glib])
     fi
     if ! test -f "$deps_prefix/lib/libnotify.a"; then
         AC_MSG_NOTICE([Building libnotify])
-        sh build-aux/download-deps.sh libnotify "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libnotify])
+        sh $am_aux_dir/download-deps.sh libnotify "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libnotify])
     fi
     cp $deps_prefix/lib/libnotify.a $build_prefix/lib/
     cp $deps_prefix/lib/libglib-2.0.a $build_prefix/lib/
@@ -334,7 +360,7 @@ fi
 # Download and build libcap (for nsenter functionality)
 if ! test -f "$build_prefix/lib/libcap.a"; then
     AC_MSG_NOTICE([Building libcap])
-    { sh build-aux/download-deps.sh libcap "$deps_builddir" "$deps_prefix" &&
+    { sh $am_aux_dir/download-deps.sh libcap "$deps_builddir" "$deps_prefix" &&
     cp $deps_prefix/lib/libcap.a $build_prefix/lib/ &&
     cp -r $deps_prefix/include/linux $build_prefix/include/ &&
     cp $deps_prefix/include/capability.h $build_prefix/include; } || AC_MSG_ERROR([Failed to build libcap])
@@ -343,22 +369,22 @@ fi
 # Download and build fmtlib headers (for better string formatting)
 if ! test -f "$build_prefix/include/fmt/format.h"; then
     AC_MSG_NOTICE([Building libfmt])
-    { sh build-aux/download-deps.sh fmt "$deps_builddir" "$deps_prefix" &&
+    { sh $am_aux_dir/download-deps.sh fmt "$deps_builddir" "$deps_prefix" &&
     cp $deps_prefix/lib/libfmt.a $build_prefix/lib/ &&
     cp -r $deps_prefix/include/fmt $build_prefix/include/; } || AC_MSG_ERROR([Failed to build libfmt])
 fi
 
 # Now download the CA certificate bundle to embed and use with curl
-if ! test -f "$PWD/assets/external/cacert.pem"; then
+if ! test -f "$top_srcdir_actual/assets/external/cacert.pem"; then
     AC_MSG_NOTICE([Downloading CA certificate bundle for curl])
-    sh build-aux/download-deps.sh cacert "$PWD/assets/external/" "$PWD/assets/external/" ||
+    sh $am_aux_dir/download-deps.sh cacert "$top_srcdir_actual/assets/external/" "$top_srcdir_actual/assets/external/" ||
         AC_MSG_ERROR([Failed to download the curl embedded certificate bundle, download it from https://curl.se/ca/cacert.pem and place it in assets/])
 fi
 
 # Get the bwrap-userns-restrict file to embed for AppArmor integration too
-if ! test -f "$PWD/assets/external/bwrap-userns-restrict"; then
+if ! test -f "$top_srcdir_actual/assets/external/bwrap-userns-restrict"; then
     AC_MSG_NOTICE([Downloading bwrap-userns-restrict to fix AppArmor])
-    sh build-aux/download-deps.sh bwrap "$PWD/assets/external/" "$PWD/assets/external/" ||
+    sh $am_aux_dir/download-deps.sh bwrap "$top_srcdir_actual/assets/external/" "$top_srcdir_actual/assets/external/" ||
         AC_MSG_ERROR([Failed to download the bwrap-userns-restrict file, find another source for it (taking it out of an Ubuntu/Debian package should work) and place it in assets/external/])
 fi
 
