@@ -24,8 +24,8 @@
 #include "update.hpp"
 #include "util.hpp"
 
-#include "fmt/core.h"
 #include "fmt/compile.h"
+#include "fmt/core.h"
 
 using namespace fmt::literals;
 
@@ -80,7 +80,8 @@ Environment variables:
   YAWL_LOG_FILE    Specify a custom path for the log file. By default, logs are written to:
                    - Terminal output (only when running interactively)
                    - $YAWL_INSTALL_DIR/{0}.log
-)_"_cf, PROG_NAME, DEFAULT_EXEC_PATH, program_invocation_short_name);
+)_"_cf,
+               PROG_NAME, DEFAULT_EXEC_PATH, program_invocation_short_name);
 }
 
 struct options {
