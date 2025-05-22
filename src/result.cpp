@@ -14,6 +14,8 @@
 #include "curl/curl.h"
 #include "result.hpp"
 
+#include "fmt/printf.h"
+
 RESULT result_from_errno(void) {
     if (errno == 0)
         return RESULT_OK;
@@ -51,36 +53,36 @@ RESULT result_from_errno(void) {
 }
 
 static const char *generic_code_to_string(const char *prefix, int rescode) {
-    static char out[128] = {0};
+    static const std::string out = {};
     /* Handle other error codes */
-    if (strlen(prefix) < sizeof(out))
+    if (strlen(prefix) < 128)
     {
         switch (rescode) {
         case E_UNKNOWN:
-            snprintf(out, sizeof(out), "%s: %s", prefix, "Unknown error");
+            fmt::sprintf(out, "%s: %s", prefix, "Unknown error");
             break;
         case E_INVALID_ARG:
-            snprintf(out, sizeof(out), "%s: %s", prefix, "Invalid argument");
+            fmt::sprintf(out, "%s: %s", prefix, "Invalid argument");
             break;
         case E_OUT_OF_MEMORY:
-            snprintf(out, sizeof(out), "%s: %s", prefix, "Out of memory");
+            fmt::sprintf(out, "%s: %s", prefix, "Out of memory");
             break;
         case E_TIMEOUT:
-            snprintf(out, sizeof(out), "%s: %s", prefix, "Operation timed out");
+            fmt::sprintf(out, "%s: %s", prefix, "Operation timed out");
             break;
         case E_BUSY:
-            snprintf(out, sizeof(out), "%s: %s", prefix, "Resource busy");
+            fmt::sprintf(out, "%s: %s", prefix, "Resource busy");
             break;
         case E_CANCELED:
-            snprintf(out, sizeof(out), "%s: %s", prefix, "Operation canceled");
+            fmt::sprintf(out, "%s: %s", prefix, "Operation canceled");
             break;
         case E_NOT_SUPPORTED:
-            snprintf(out, sizeof(out), "%s: %s", prefix, "Operation not supported");
+            fmt::sprintf(out, "%s: %s", prefix, "Operation not supported");
             break;
         default:
-            snprintf(out, sizeof(out), "%s: %s (%s)", prefix, "Unhandled result code error", rescode < 256 ? strerror(rescode) : "-");
+            fmt::sprintf(out, "%s: %s (%s)", prefix, "Unhandled result code error", rescode < 256 ? strerror(rescode) : "-");
         }
-        return out;
+        return out.c_str();
     }
     return prefix;
 }

@@ -25,6 +25,8 @@
 #include "util.hpp"
 #include "yawlconfig.hpp"
 
+#include "fmt/printf.h"
+
 #define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/" PROG_NAME "/releases/latest"
 #define GITHUB_RELEASES_PAGE_URL PACKAGE_URL "/releases/download"
 #define UPDATE_USER_AGENT PROG_NAME "-updater/" VERSION
@@ -350,7 +352,7 @@ static RESULT check_for_updates(void) {
     /* Save download URL for later use */
     autoclose FILE *fp = fopen(release_file, "w");
     if (fp)
-        fprintf(fp, "%s", download_url);
+        fmt::fprintf(fp, "%s", download_url);
 
     return MAKE_RESULT(SEV_INFO, CAT_GENERAL, E_UPDATE_AVAILABLE);
 }

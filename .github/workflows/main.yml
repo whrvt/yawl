@@ -82,7 +82,7 @@ jobs:
           ./deps/yawl
         key: deps-${{ github.workflow }}-${{ hashFiles('configure.ac') }}
         restore-keys: |
-          deps-${{ github.workflow }}-
+          deps-${{ github.workflow }}-${{ hashFiles('configure.ac') }}
     - name: Configure
       shell: bash
       run: |

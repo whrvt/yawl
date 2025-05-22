@@ -27,6 +27,7 @@
 
 #include "fmt/compile.h"
 #include "fmt/core.h"
+#include "fmt/printf.h"
 
 using namespace fmt::literals;
 
@@ -425,7 +426,7 @@ static RESULT create_config_file(nonnull_charp config_name, const struct options
     /* Write the current configuration */
     /* TODO: maybe support adding PATHs and other env vars */
     if (opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH))
-        fprintf(fp, "exec=%s\n", opts->exec_path);
+        fmt::fprintf(fp, "exec=%s\n", opts->exec_path);
 
     fclose(fp);
     LOG_INFO("Created configuration file: %s", config_path);
@@ -595,18 +596,18 @@ static RESULT load_config(nonnull_charp config_name, struct options *opts) {
    either when execv() is called or when the process exits. */
 int main(int argc, char *argv[]) {
     if (geteuid() == 0) {
-        fprintf(stderr, "This program should not be run as root. Exiting.\n");
+        fmt::fprintf(stderr, "This program should not be run as root. Exiting.\n");
         return 1;
     }
 
     /* Setup global directories first */
     if (FAILED(config::setup_prog_dir())) {
-        fprintf(stderr, "The program directory is unusable\n");
+        fmt::fprintf(stderr, "The program directory is unusable\n");
         return 1;
     }
 
     if (FAILED(config::setup_config_dir())) {
-        fprintf(stderr, "The configuration directory is unusable\n");
+        fmt::fprintf(stderr, "The configuration directory is unusable\n");
         return 1;
     }
 
@@ -614,7 +615,7 @@ int main(int argc, char *argv[]) {
 
     result = log_init();
     if (FAILED(result) && (RESULT_CODE(result) != E_CANCELED))
-        fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
+        fmt::fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
 
     LOG_DEBUG(PROG_NAME " directories initialized - yawl_dir: %s, config_dir: %s", config::yawl_dir, config::config_dir);
 
@@ -654,7 +655,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (opts.version) {
-        printf(VERSION "\n");
+        fmt::printf(VERSION "\n");
         return 0;
     }
 

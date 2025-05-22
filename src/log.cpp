@@ -20,6 +20,8 @@
 #include "util.hpp"
 #include "yawlconfig.hpp"
 
+#include "fmt/printf.h"
+
 static FILE *log_file = nullptr;
 static log_level_t current_log_level = LOG_INFO;
 static bool terminal_output = false;
@@ -91,7 +93,7 @@ RESULT log_init(void) {
         log_file = fopen(log_file_path, "a");
         if (!log_file) {
             /* Fall back to stderr if file can't be opened */
-            fprintf(stderr, "Failed to open log file: %s\n", strerror(errno));
+            fmt::fprintf(stderr, "Failed to open log file: %s\n", strerror(errno));
             free(log_file_path);
 
             RESULT result = result_from_errno();
@@ -105,7 +107,7 @@ RESULT log_init(void) {
         char time_str[64];
         strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
 
-        fprintf(log_file, "=== Log session started at %s ===\n", time_str);
+        fmt::fprintf(log_file, "=== Log session started at %s ===\n", time_str);
         fflush(log_file);
     }
 
@@ -122,7 +124,7 @@ void log_cleanup(void) {
         char time_str[64];
         strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
 
-        fprintf(log_file, "=== Log session ended at %s ===\n\n", time_str);
+        fmt::fprintf(log_file, "=== Log session ended at %s ===\n\n", time_str);
         fflush(log_file);
 
         fclose(log_file);
@@ -171,13 +173,13 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
     if (terminal_output) {
         FILE *output = (level <= LOG_WARNING) ? stderr : stdout;
 
-        fprintf(output, "%s[%s]%s ", level_colors[level], level_strings[level], COLOR_RESET);
+        fmt::fprintf(output, "%s[%s]%s ", level_colors[level], level_strings[level], COLOR_RESET);
 
         va_start(args, format);
         vfprintf(output, format, args);
         va_end(args);
 
-        fprintf(output, "\n");
+        fmt::fprintf(output, "\n");
     }
 
     if (log_file && level != LOG_SYSTEM && level != LOG_PROGRESS) {
@@ -196,13 +198,13 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         else
             filename = file;
 
-        fprintf(log_file, "[%s] %s %s:%d: ", level_strings[level], timestamp, filename, line);
+        fmt::fprintf(log_file, "[%s] %s %s:%d: ", level_strings[level], timestamp, filename, line);
 
         va_start(args, format);
         vfprintf(log_file, format, args);
         va_end(args);
 
-        fprintf(log_file, "\n");
+        fmt::fprintf(log_file, "\n");
         fflush(log_file);
     }
 }
@@ -249,16 +251,16 @@ void log_progress(const char *operation, double percentage, int bytes_done, int 
     int bar_width = 30;
     int filled_width = (int)((percentage / 100.0) * bar_width);
 
-    fprintf(stdout, "\r%s[%s]%s ", level_colors[LOG_PROGRESS], level_strings[LOG_PROGRESS], COLOR_RESET);
-    fprintf(stdout, "%-20.20s [", operation);
+    fmt::fprintf(stdout, "\r%s[%s]%s ", level_colors[LOG_PROGRESS], level_strings[LOG_PROGRESS], COLOR_RESET);
+    fmt::fprintf(stdout, "%-20.20s [", operation);
 
     for (int i = 0; i < bar_width; i++) {
         if (i < filled_width)
-            fprintf(stdout, "=");
+            fmt::fprintf(stdout, "=");
         else if (i == filled_width)
-            fprintf(stdout, ">");
+            fmt::fprintf(stdout, ">");
         else
-            fprintf(stdout, " ");
+            fmt::fprintf(stdout, " ");
     }
 
     if (bytes_total > 0) {
@@ -272,9 +274,9 @@ void log_progress(const char *operation, double percentage, int bytes_done, int 
             size_total /= 1024;
             unit_idx++;
         }
-        fprintf(stdout, "] %3d%% (%.1f/%.1f %s)", (int)percentage, size_now, size_total, units[unit_idx]);
+        fmt::fprintf(stdout, "] %3d%% (%.1f/%.1f %s)", (int)percentage, size_now, size_total, units[unit_idx]);
     } else {
-        fprintf(stdout, "] %3d%%", (int)percentage);
+        fmt::fprintf(stdout, "] %3d%%", (int)percentage);
     }
 
     fflush(stdout);
@@ -282,7 +284,7 @@ void log_progress(const char *operation, double percentage, int bytes_done, int 
 
 void log_progress_end(void) {
     if (terminal_output && last_progress_update > 0) {
-        fprintf(stdout, "\n");
+        fmt::fprintf(stdout, "\n");
         fflush(stdout);
         last_progress_update = 0;
     }
