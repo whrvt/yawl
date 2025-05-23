@@ -95,7 +95,16 @@ struct options {
     const char *make_wrapper; /* Name of the wrapper to create (nullptr = don't create) */
     const char *config;       /* Name of the config to use (nullptr = use argv[0] or default) */
     const char *wineserver;   /* Path to the wineserver binary (nullptr = don't create wineserver wrapper) */
+    const char *proton;       /* Path to the proton script */
+    const char *proton_verb;  /* Verb to use to run proton (default: run)*/
 };
+
+/* Shortcut to override already existing environmental variables */
+static void setenv_if_unset(const char *name, const char *value) {
+    if (!getenv(name)) {
+        setenv(name, value, 1);
+    }
+}
 
 /* Parse a single option string and update the options structure */
 static RESULT parse_option(nonnull_charp option, struct options *opts) {
@@ -126,8 +135,17 @@ static RESULT parse_option(nonnull_charp option, struct options *opts) {
         opts->config = strdup(STRING_AFTER_PREFIX(option, "config="));
     } else if (LCSTRING_PREFIX(option, "wineserver=")) {
         opts->wineserver = expand_path(STRING_AFTER_PREFIX(option, "wineserver="));
+    } else if (LCSTRING_PREFIX(option, "proton=")) {
+        opts->proton = expand_path(STRING_AFTER_PREFIX(option, "proton="));
+    } else if (LCSTRING_PREFIX(option, "proton_verb=")) {
+        opts->proton_verb = expand_path(STRING_AFTER_PREFIX(option, "proton_verb="));
     } else {
         return MAKE_RESULT(SEV_WARNING, CAT_CONFIG, E_UNKNOWN); /* Unknown option */
+    }
+
+    /* proton= takes precedence over exec=... */ 
+    if (opts->proton && opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH)) {
+        LOG_WARNING("Ignoring exec, using proton instead..");
     }
 
     return RESULT_OK;
@@ -425,7 +443,9 @@ static RESULT create_config_file(nonnull_charp config_name, const struct options
 
     /* Write the current configuration */
     /* TODO: maybe support adding PATHs and other env vars */
-    if (opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH))
+    if (opts->proton)
+        fmt::fprintf(fp, "proton=%s\n", opts->proton);
+    else if (opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH))
         fmt::fprintf(fp, "exec=%s\n", opts->exec_path);
 
     fclose(fp);
@@ -662,8 +682,8 @@ int main(int argc, char *argv[]) {
     /* Handle make_wrapper option */
     if (opts.make_wrapper) {
         LOG_DEBUG("Making wrapper %s", opts.make_wrapper);
-        if (opts.exec_path && STRING_EQUALS(opts.exec_path, DEFAULT_EXEC_PATH)) {
-            LOG_WARNING("You need to pass an exec= verb to create a wrapper. Use YAWL_VERBS=\"help\" for examples.");
+        if ((!opts.exec_path || STRING_EQUALS(opts.exec_path, DEFAULT_EXEC_PATH)) && !opts.proton) {
+            LOG_WARNING("You need to pass an exec= or proton= verb to create a wrapper. Use YAWL_VERBS=\"help\" for examples.");
             return 0;
         }
         result = create_wrapper(opts.make_wrapper, &opts);
@@ -682,6 +702,38 @@ int main(int argc, char *argv[]) {
         result = load_config(config_name, &opts);
         if (FAILED(result))
             LOG_WARNING("Failed to load configuration. Continuing with defaults.");
+    }
+
+    if (opts.proton) {
+        char *proton_path = strdup(opts.proton);
+        opts.exec_path = proton_path;
+        
+        /* Set Steam compatibility variables (allow existing env to override) */ 
+        setenv_if_unset("STEAM_COMPAT_CLIENT_INSTALL_PATH", proton_path);
+        setenv_if_unset("STEAM_COMPAT_SESSION_ID", "yawl-default");
+        setenv_if_unset("STEAM_COMPAT_APP_ID", "yawl-default");
+        setenv_if_unset("UMU_ID", "yawl-default"); /* For compatibility with Proton */ 
+        
+        /* Create default compat data path if none specified */ 
+        const char *wineprefix = getenv("WINEPREFIX");
+        if (wineprefix) {
+            /* Make sure Wineprefix exists beforehand */ 
+            ensure_dir(wineprefix);
+            setenv("STEAM_COMPAT_DATA_PATH", wineprefix, 1);
+        }
+        else {
+            /* Look for appid and if not default, create an apposite prefix */
+            char *appid = getenv("STEAM_COMPAT_APP_ID");
+            char *prefix_path = nullptr;
+
+            if (!STRING_EQUALS(appid, "yawl-default"))
+                join_paths(prefix_path, config::yawl_dir, "prefixes", appid);
+            else
+                join_paths(prefix_path, config::yawl_dir, "prefixes", "yawl-default");
+
+            ensure_dir(prefix_path);
+            setenv("STEAM_COMPAT_DATA_PATH", prefix_path, 1);
+        }
     }
 
     if (opts.enterpid) {
@@ -704,14 +756,21 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char **new_argv = (char **)calloc(argc + 4, sizeof(char *));
+    int extra_args = opts.proton ? 5 : 4;
+    char **new_argv = (char **)calloc(argc + extra_args, sizeof(char *));
     new_argv[0] = entry_point;
     new_argv[1] = (char *)"--verb=waitforexitandrun";
     new_argv[2] = (char *)"--";
     new_argv[3] = (char *)opts.exec_path;
 
+    int args_sum = 3;
+    if (opts.proton) {
+        new_argv[4] = opts.proton_verb ? strdup(opts.proton_verb) : strdup("run");
+        args_sum++;
+    }
+
     for (int i = 1; i < argc; i++) {
-        new_argv[i + 3] = argv[i];
+        new_argv[i + args_sum] = argv[i];
     }
 
     /* Set up library paths based on the executable path */
