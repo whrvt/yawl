@@ -17,27 +17,27 @@
 
 #include "config.h"
 
-#include <assert.h>
+#include <cassert>
 #include <dirent.h>
 #include <err.h>
-#include <errno.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <getopt.h>
 #include <grp.h>
-#include <inttypes.h>
+#include <cinttypes>
 #include <libintl.h>
-#include <limits.h>
-#include <locale.h>
+#include <climits>
+#include <clocale>
 #include <sched.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sys/stat.h>
 #include <sys/statfs.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <time.h>
+#include <ctime>
 #include <unistd.h>
 
 #include <sys/ioctl.h>

@@ -304,6 +304,13 @@ if ! test -f "$build_prefix/lib/libarchive.a"; then
     cp $deps_prefix/include/archive* $build_prefix/include/
 fi
 
+# Download and build c-ares (required for curl to resolve hostnames properly vs musl's resolver)
+if ! test -f "$build_prefix/lib/libcares.a"; then
+    AC_MSG_NOTICE([Building c-ares])
+    sh $am_aux_dir/download-deps.sh ares "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build c-ares (required to build curl)])
+    cp $deps_prefix/lib/libcares.a $build_prefix/lib/
+fi
+
 # Download and build curl
 if ! test -f "$build_prefix/lib/libcurl.a"; then
     AC_MSG_NOTICE([Building curl])
@@ -386,7 +393,7 @@ LIBARCHIVE_CPPFLAGS="-DLIBARCHIVE_STATIC"
 NON_GLIB_CPPFLAGS="$LIBARCHIVE_CPPFLAGS $CURL_CPPFLAGS -I$build_prefix/include"
 
 COMMON_DEP_LIBS="-lcap -lidn2 -lpsl -lunistring -lz -llzma -lzstd"
-CURL_LIBS="-lcurl"
+CURL_LIBS="-lcurl -lcares"
 LIBARCHIVE_LIBS="-larchive"
 OPENSSL_LIBS="-lssl -lcrypto"
 FMT_LIBS="-lfmt"

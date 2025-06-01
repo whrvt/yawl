@@ -7,8 +7,8 @@
  * See the full license text in the repository LICENSE file.
  */
 
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 
 #include "apparmor.hpp"
 #include "log.hpp"

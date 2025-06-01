@@ -11,7 +11,7 @@
 
 #include <dirent.h>
 #include <pwd.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <sys/stat.h>
 #include <unistd.h>
 

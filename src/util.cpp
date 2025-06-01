@@ -7,10 +7,10 @@
  * See the full license text in the repository LICENSE file.
  */
 
-#include <assert.h>
-#include <ctype.h>
-#include <errno.h>
-#include <string.h>
+#include <cassert>
+#include <cctype>
+#include <cerrno>
+#include <cstring>
 #include <wordexp.h>
 
 #include "archive.h"

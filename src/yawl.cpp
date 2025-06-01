@@ -9,11 +9,11 @@
 
 #include "config.h"
 
-#include <assert.h>
-#include <errno.h>
+#include <cassert>
+#include <cerrno>
 #include <getopt.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 #include <sys/prctl.h>
 
 #include "apparmor.hpp"

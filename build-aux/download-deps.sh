@@ -11,8 +11,9 @@ PSL_VERSION="0.21.5"
 LIBZ_VERSION="2.2.4"
 XZ_VERSION="5.6.4"
 ZSTD_VERSION="1.5.7"
-OPENSSL_VERSION="3.2.1"
-CURL_VERSION="8.12.1"
+OPENSSL_VERSION="3.5.0"
+ARES_VERSION="1.34.5"
+CURL_VERSION="8.14.0"
 LIBFFI_VERSION="3.4.7"
 GDK_PIXBUF_VERSION="2.42.12"
 LIBNOTIFY_VERSION="0.8.4"
@@ -369,6 +370,34 @@ case "$LIB" in
         make install || exit 1
         ;;
 
+    ares)
+        if [ ! -d "c-ares-$ARES_VERSION" ]; then
+            echo "Downloading c-ares-$ARES_VERSION..."
+            download_file "https://github.com/c-ares/c-ares/releases/download/v$ARES_VERSION/c-ares-$ARES_VERSION.tar.gz" "c-ares.tar.gz"
+            tar -xzf c-ares.tar.gz
+            rm c-ares.tar.gz
+        fi
+
+        cd "c-ares-$ARES_VERSION"
+
+        cp $cch . &&
+        ./configure -C \
+            --prefix="$PREFIX" \
+            --disable-shared \
+            --enable-static \
+            --disable-tests \
+            --enable-cares-threads \
+            CC="$CC" \
+            CXX="$CXX" \
+            CPPFLAGS="$CPPFLAGS" \
+            CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS" \
+            LDFLAGS="$LDFLAGS"
+
+        make -j"$JOBS" && \
+        make install || exit 1
+        ;;
+
     curl)
         if [ ! -d "curl-$CURL_VERSION" ]; then
             echo "Downloading curl-$CURL_VERSION..."
@@ -416,6 +445,7 @@ case "$LIB" in
             --disable-mqtt \
             --enable-http \
             --with-openssl \
+            --enable-ares \
             CC="$CC" \
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \
