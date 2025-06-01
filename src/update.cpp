@@ -145,7 +145,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
         while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, src)) > 0) {
             if (fwrite(buffer, 1, bytes_read, dst) != bytes_read) {
                 RESULT result = result_from_errno();
-                LOG_RESULT(LOG_ERROR, result, "Failed to write to destination file");
+                LOG_RESULT(Level::Error, result, "Failed to write to destination file");
                 unlink(actual_dest);
                 return result;
             }
@@ -153,7 +153,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
 
         if (ferror(src)) {
             RESULT result = result_from_errno();
-            LOG_RESULT(LOG_ERROR, result, "Failed to read from source file");
+            LOG_RESULT(Level::Error, result, "Failed to read from source file");
             unlink(actual_dest);
             return result;
         }
@@ -178,7 +178,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
                 return result;
             } else {
                 RESULT result = result_from_errno();
-                LOG_RESULT(LOG_ERROR, result, "Failed to rename temporary file");
+                LOG_RESULT(Level::Error, result, "Failed to rename temporary file");
                 unlink(actual_dest);
                 return result;
             }
@@ -203,13 +203,13 @@ static RESULT copy_file(const char *source, const char *destination) {
                 LOG_DEBUG("Creating backup using copy (cross-device)");
                 result = copy_file_raw(destination, backup_file, 0);
                 if (FAILED(result)) {
-                    LOG_RESULT(LOG_ERROR, result, "Failed to create backup copy");
+                    LOG_RESULT(Level::Error, result, "Failed to create backup copy");
                     return result;
                 }
             } else {
                 result = result_from_errno();
                 /* too dangerous to try continuing */
-                LOG_RESULT(LOG_ERROR, result, "Failed to create backup");
+                LOG_RESULT(Level::Error, result, "Failed to create backup");
                 return result;
             }
         }
@@ -217,14 +217,14 @@ static RESULT copy_file(const char *source, const char *destination) {
 
     result = copy_file_raw(source, destination, 1);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to copy new binary");
+        LOG_RESULT(Level::Error, result, "Failed to copy new binary");
         if (access(backup_file, F_OK) == 0) {
             LOG_INFO("Restoring from backup");
             if (rename(backup_file, destination) != 0) {
                 if (errno == EXDEV) {
                     RESULT restore_result = copy_file_raw(backup_file, destination, 0);
                     if (FAILED(restore_result))
-                        LOG_RESULT(LOG_ERROR, restore_result, "Failed to restore from backup");
+                        LOG_RESULT(Level::Error, restore_result, "Failed to restore from backup");
                 }
             }
         }
@@ -326,7 +326,7 @@ static RESULT check_for_updates(void) {
     join_paths(release_file, config::yawl_dir, RELEASE_INFO_FILE);
     result = download_file(GITHUB_API_RELEASES_URL, release_file, headers);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to download release information");
+        LOG_RESULT(Level::Error, result, "Failed to download release information");
         return result;
     }
 
@@ -408,13 +408,13 @@ static RESULT perform_update(void) {
     LOG_INFO("Downloading update from %s", download_url, temp_binary);
     result = download_file(download_url, temp_binary, nullptr);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to download update");
+        LOG_RESULT(Level::Error, result, "Failed to download update");
         return result;
     }
 
     result = make_executable(temp_binary);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to set executable permissions");
+        LOG_RESULT(Level::Error, result, "Failed to set executable permissions");
         return result;
     }
 

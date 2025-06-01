@@ -23,7 +23,7 @@
 #include "fmt/printf.h"
 
 static FILE *log_file = nullptr;
-static log_level_t current_log_level = LOG_INFO;
+static Level current_log_level = Level::Info;
 static bool terminal_output = false;
 static gboolean notify_initialized = FALSE;
 
@@ -43,23 +43,23 @@ static constexpr const char *const level_colors[] = {"\0",        COLOR_SYSTEM, 
 static_assert(sizeof(level_strings) == sizeof(level_colors), "each log level string should have a corresponding color");
 
 /* Parse log level from string */
-static log_level_t parse_log_level(const char *level_str) {
+static Level parse_log_level(const char *level_str) {
     if (!level_str ||
         (strlen(level_str) > (sizeof("error") - 1UL))) /* longest error level string (not including "SYSTEM" since
                                                           that's reserved for always-shown notifications) */
-        return LOG_INFO;
+        return Level::Info;
 
-    log_level_t level = LOG_INFO;
+    Level level = Level::Info;
     if (LCSTRING_EQUALS(level_str, "none"))
-        level = LOG_NONE;
+        level = Level::None;
     else if (LCSTRING_EQUALS(level_str, "error"))
-        level = LOG_ERROR;
+        level = Level::Error;
     else if (LCSTRING_EQUALS(level_str, "warn"))
-        level = LOG_WARNING;
+        level = Level::Warning;
     else if (LCSTRING_EQUALS(level_str, "info"))
-        level = LOG_INFO;
+        level = Level::Info;
     else if (LCSTRING_EQUALS(level_str, "debug"))
-        level = LOG_DEBUG;
+        level = Level::Debug;
 
     return level;
 }
@@ -80,7 +80,7 @@ RESULT log_init(void) {
 
     notify_initialized = notify_init(PROG_NAME);
 
-    if (current_log_level == LOG_NONE)
+    if (current_log_level == Level::None)
         return MAKE_RESULT(SEV_SUCCESS, CAT_CONFIG, E_CANCELED);
 
     const char *log_file_env = getenv("YAWL_LOG_FILE");
@@ -97,7 +97,7 @@ RESULT log_init(void) {
             free(log_file_path);
 
             RESULT result = result_from_errno();
-            LOG_RESULT(LOG_ERROR, result, "Failed to open log file");
+            LOG_RESULT(Level::Error, result, "Failed to open log file");
             return result;
         }
 
@@ -132,27 +132,28 @@ void log_cleanup(void) {
     }
 }
 
-void log_set_level(log_level_t level) {
-    if (level >= LOG_NONE && level <= LOG_DEBUG)
+void log_set_level(Level level) {
+    if (level >= Level::None && level <= Level::Debug)
         current_log_level = level;
 }
 
-log_level_t log_get_level(void) { return current_log_level; }
+Level log_get_level(void) { return current_log_level; }
 
 bool log_get_terminal_output(void) { return terminal_output; }
 
-void _log_message(log_level_t level, const char *file, int line, const char *format, ...) {
-    if (level > current_log_level && level != LOG_SYSTEM)
+void _log_message(Level level, const char *file, int line, const char *format, ...) {
+    if (level > current_log_level && level != Level::System)
         return;
 
     va_list args;
 
-    if (level == LOG_SYSTEM && notify_initialized) {
+    if (level == Level::System && notify_initialized) {
         NotifyNotification *notif;
         char *message = nullptr;
 
         va_start(args, format);
-        assert(!vasprintf(&message, format, args)); // glibc compatibility
+        if (!vasprintf(&message, format, args)) {
+        } // glibc compatibility
         va_end(args);
 
         notif = notify_notification_new(PROG_NAME, message, "dialog-information");
@@ -171,9 +172,10 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
 
     /* Output to terminal if appropriate */
     if (terminal_output) {
-        FILE *output = (level <= LOG_WARNING) ? stderr : stdout;
+        FILE *output = (level <= Level::Warning) ? stderr : stdout;
 
-        fmt::fprintf(output, "%s[%s]%s ", level_colors[level], level_strings[level], COLOR_RESET);
+        fmt::fprintf(output, "%s[%s]%s ", level_colors[static_cast<size_t>(level)],
+                     level_strings[static_cast<size_t>(level)], COLOR_RESET);
 
         va_start(args, format);
         vfprintf(output, format, args);
@@ -182,7 +184,7 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         fmt::fprintf(output, "\n");
     }
 
-    if (log_file && level != LOG_SYSTEM && level != LOG_PROGRESS) {
+    if (log_file && level != Level::System && level != Level::Progress) {
         char timestamp[32];
         time_t now = time(nullptr);
 
@@ -198,7 +200,7 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
         else
             filename = file;
 
-        fmt::fprintf(log_file, "[%s] %s %s:%d: ", level_strings[level], timestamp, filename, line);
+        fmt::fprintf(log_file, "[%s] %s %s:%d: ", level_strings[static_cast<size_t>(level)], timestamp, filename, line);
 
         va_start(args, format);
         vfprintf(log_file, format, args);
@@ -209,8 +211,8 @@ void _log_message(log_level_t level, const char *file, int line, const char *for
     }
 }
 
-void _log_result(log_level_t level, const char *file, int line, RESULT result, const char *context) {
-    if (SUCCEEDED(result) && level < LOG_DEBUG)
+void _log_result(Level level, const char *file, int line, RESULT result, const char *context) {
+    if (SUCCEEDED(result) && level < Level::Debug)
         return;
     if (level > current_log_level)
         return;
@@ -223,12 +225,12 @@ void _log_result(log_level_t level, const char *file, int line, RESULT result, c
     else
         _log_message(level, file, line, "Result: %s (0x%08X)", result_str, (unsigned)result);
 
-    if (current_log_level == LOG_DEBUG) {
+    if (current_log_level == Level::Debug) {
         const int severity = RESULT_SEVERITY(result);
         const int category = RESULT_CATEGORY(result);
         const int code = RESULT_CODE(result);
 
-        _log_message(LOG_DEBUG, file, line, "  Details: Severity=%d, Category=%d, Code=0x%04X", severity, category,
+        _log_message(Level::Debug, file, line, "  Details: Severity=%d, Category=%d, Code=0x%04X", severity, category,
                      code);
     }
 }
@@ -251,7 +253,8 @@ void log_progress(const char *operation, double percentage, int bytes_done, int 
     int bar_width = 30;
     int filled_width = (int)((percentage / 100.0) * bar_width);
 
-    fmt::fprintf(stdout, "\r%s[%s]%s ", level_colors[LOG_PROGRESS], level_strings[LOG_PROGRESS], COLOR_RESET);
+    fmt::fprintf(stdout, "\r%s[%s]%s ", level_colors[static_cast<size_t>(Level::Progress)],
+                 level_strings[static_cast<size_t>(Level::Progress)], COLOR_RESET);
     fmt::fprintf(stdout, "%-20.20s [", operation);
 
     for (int i = 0; i < bar_width; i++) {

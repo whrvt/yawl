@@ -86,13 +86,13 @@ static RESULT write_temp_apparmor_profile(char *temp_path[]) {
     fp = fopen(*temp_path, "wb");
     if (!fp) {
         RESULT result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to create temporary AppArmor profile");
+        LOG_RESULT(Level::Error, result, "Failed to create temporary AppArmor profile");
         return result;
     }
 
     if (fwrite(bwrap_userns_restrict, 1, sizeof(bwrap_userns_restrict), fp) != sizeof(bwrap_userns_restrict)) {
         RESULT result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to write AppArmor profile data");
+        LOG_RESULT(Level::Error, result, "Failed to write AppArmor profile data");
         unlink(*temp_path);
         return result;
     }
@@ -155,7 +155,7 @@ RESULT handle_apparmor(const char *entry_point) {
     /* Try to install the AppArmor profile */
     result = install_apparmor_profile();
     if (FAILED(result)) {
-        LOG_RESULT(LOG_DEBUG, result, "Failed to install AppArmor profile");
+        LOG_RESULT(Level::Debug, result, "Failed to install AppArmor profile");
 
         LOG_SYSTEM("Failed to install AppArmor profile. Container may not work correctly.\n"
                    "Please follow this guide to manually install the AppArmor profile:\n"
@@ -167,7 +167,7 @@ RESULT handle_apparmor(const char *entry_point) {
     LOG_DEBUG("Testing container again after AppArmor profile installation");
     result = test_container(entry_point);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_DEBUG, result, "Container still not working after AppArmor profile installation");
+        LOG_RESULT(Level::Debug, result, "Container still not working after AppArmor profile installation");
 
         LOG_SYSTEM("Container still not working after AppArmor profile installation.\n"
                    "You may need to restart the system for AppArmor changes to take effect.");

@@ -56,6 +56,8 @@ Environment variables:
                    - 'make_wrapper=NAME' Create a wrapper configuration and symlink
                    - 'config=NAME'       Use a specific configuration file
                    - 'wineserver=PATH'   Set the wineserver executable path when creating a wrapper
+                   - 'proton=PATH':      Set the Proton script to run in the container (overrides 'exec=')
+                   - 'proton_verb=NAME': Verb to use to run Proton (default: 'run')
                    - 'enter=PID'         Run an executable in the same container as PID
 
             Examples:
@@ -143,9 +145,9 @@ static RESULT parse_option(nonnull_charp option, struct options *opts) {
         return MAKE_RESULT(SEV_WARNING, CAT_CONFIG, E_UNKNOWN); /* Unknown option */
     }
 
-    /* proton= takes precedence over exec=... */ 
+    /* proton= takes precedence over exec= */
     if (opts->proton && opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH)) {
-        LOG_WARNING("Ignoring exec, using proton instead..");
+        LOG_DEBUG("Ignoring exec, using proton instead.");
     }
 
     return RESULT_OK;
@@ -207,7 +209,7 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
 
     if (chdir(runtime_path) != 0) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to change to runtime directory");
+        LOG_RESULT(Level::Error, result, "Failed to change to runtime directory");
         return result;
     }
 
@@ -217,7 +219,7 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
     /* Restore directory */
     if (chdir(old_cwd) != 0) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to restore directory");
+        LOG_RESULT(Level::Error, result, "Failed to restore directory");
         return result;
     }
 
@@ -258,7 +260,7 @@ static RESULT verify_slr_hash(nonnull_charp archive_path, nonnull_charp hash_url
     }
 
     result = calculate_sha256(archive_path, actual_hash);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Could not calculate hash");
+    LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Could not calculate hash");
 
     if (!STRING_EQUALS(expected_hash, actual_hash)) {
         LOG_WARNING("Archive hash mismatch.");
@@ -286,7 +288,7 @@ static RESULT setup_runtime(const struct options *opts) {
         LOG_INFO("Reinstalling runtime...");
         RESULT remove_result = remove_dir(runtime_path);
         if (FAILED(remove_result))
-            LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove existing runtime directory");
+            LOG_RESULT(Level::Warning, remove_result, "Failed to remove existing runtime directory");
         unlink(archive_path);
     } else if (verify) {
         LOG_INFO("Verifying existing runtime folder integrity...");
@@ -294,7 +296,7 @@ static RESULT setup_runtime(const struct options *opts) {
         if (FAILED(ret)) {
             RESULT remove_result = remove_dir(runtime_path);
             if (FAILED(remove_result))
-                LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove corrupt runtime directory");
+                LOG_RESULT(Level::Warning, remove_result, "Failed to remove corrupt runtime directory");
             LOG_INFO("Reinstalling corrupt runtime folder...");
             install = 1;
         }
@@ -317,7 +319,7 @@ static RESULT setup_runtime(const struct options *opts) {
                 LOG_WARNING("Previous attempt failed, trying one more time...");
                 RESULT remove_result = remove_dir(runtime_path);
                 if (FAILED(remove_result)) {
-                    LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove runtime directory");
+                    LOG_RESULT(Level::Warning, remove_result, "Failed to remove runtime directory");
                 }
                 unlink(archive_path);
             }
@@ -339,7 +341,7 @@ static RESULT setup_runtime(const struct options *opts) {
             if (download) {
                 success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path, nullptr);
                 if (FAILED(success)) {
-                    LOG_RESULT(LOG_ERROR, success, "Failed to download runtime");
+                    LOG_RESULT(Level::Error, success, "Failed to download runtime");
                     unlink(archive_path);
                     continue;
                 }
@@ -348,7 +350,7 @@ static RESULT setup_runtime(const struct options *opts) {
             LOG_INFO("Extracting runtime...");
             success = extract_archive(archive_path, config::yawl_dir);
             if (FAILED(success)) {
-                LOG_RESULT(LOG_ERROR, success, "Failed to extract runtime");
+                LOG_RESULT(Level::Error, success, "Failed to extract runtime");
                 unlink(archive_path);
                 continue;
             }
@@ -356,7 +358,7 @@ static RESULT setup_runtime(const struct options *opts) {
             LOG_INFO("Verifying runtime folder integrity...");
             success = verify_runtime(runtime_path);
             if (FAILED(success)) {
-                LOG_RESULT(LOG_ERROR, success, "Runtime verification failed");
+                LOG_RESULT(Level::Error, success, "Runtime verification failed");
                 continue;
             }
         } while (1);
@@ -437,7 +439,7 @@ static RESULT create_config_file(nonnull_charp config_name, const struct options
     fp = fopen(config_path, "w");
     if (!fp) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to create config file");
+        LOG_RESULT(Level::Error, result, "Failed to create config file");
         return result;
     }
 
@@ -465,7 +467,7 @@ static RESULT create_symlink(nonnull_charp config_name) {
     exec_path = realpath("/proc/self/exe", nullptr);
     if (!exec_path) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to get executable path");
+        LOG_RESULT(Level::Error, result, "Failed to get executable path");
         return result;
     }
 
@@ -488,7 +490,7 @@ static RESULT create_symlink(nonnull_charp config_name) {
     /* Create the symlink */
     if (symlink(exec_path, symlink_path) != 0) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to create symlink");
+        LOG_RESULT(Level::Error, result, "Failed to create symlink");
     } else {
         LOG_INFO("Created symlink: %s -> %s", symlink_path, exec_path);
     }
@@ -583,7 +585,7 @@ static RESULT load_config(nonnull_charp config_name, struct options *opts) {
     fp = fopen(config_path, "r");
     if (!fp) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to open config file");
+        LOG_RESULT(Level::Error, result, "Failed to open config file");
         return result;
     }
 
@@ -637,13 +639,14 @@ int main(int argc, char *argv[]) {
     if (FAILED(result) && (RESULT_CODE(result) != E_CANCELED))
         fmt::fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
 
-    LOG_DEBUG(PROG_NAME " directories initialized - yawl_dir: %s, config_dir: %s", config::yawl_dir, config::config_dir);
+    LOG_DEBUG(PROG_NAME " directories initialized - yawl_dir: %s, config_dir: %s", config::yawl_dir,
+              config::config_dir);
 
     struct options opts = {};
     opts.exec_path = strdup(DEFAULT_EXEC_PATH);
 
     result = parse_env_options(&opts);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to parse options");
+    LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Failed to parse options");
 
     if (opts.help) {
         print_usage();
@@ -657,7 +660,7 @@ int main(int argc, char *argv[]) {
 
         RESULT update_result = handle_updates(opts.check, opts.update);
         if (FAILED(update_result)) {
-            LOG_RESULT(LOG_WARNING, update_result, "Update unsuccessful");
+            LOG_RESULT(Level::Warning, update_result, "Update unsuccessful");
             LOG_DEBUG_RESULT(update_result, "May have hit rate limit");
         } else if (RESULT_CODE(update_result) == E_UPDATE_PERFORMED) {
             LOG_INFO("Update installed.");
@@ -683,11 +686,12 @@ int main(int argc, char *argv[]) {
     if (opts.make_wrapper) {
         LOG_DEBUG("Making wrapper %s", opts.make_wrapper);
         if ((!opts.exec_path || STRING_EQUALS(opts.exec_path, DEFAULT_EXEC_PATH)) && !opts.proton) {
-            LOG_WARNING("You need to pass an exec= or proton= verb to create a wrapper. Use YAWL_VERBS=\"help\" for examples.");
+            LOG_WARNING(
+                "You need to pass an exec= or proton= verb to create a wrapper. Use YAWL_VERBS=\"help\" for examples.");
             return 0;
         }
         result = create_wrapper(opts.make_wrapper, &opts);
-        LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to create wrapper configuration");
+        LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Failed to create wrapper configuration");
 
         /* Exit after creating the wrapper if no other arguments */
         if (argc <= 1) {
@@ -707,22 +711,21 @@ int main(int argc, char *argv[]) {
     if (opts.proton) {
         char *proton_path = strdup(opts.proton);
         opts.exec_path = proton_path;
-        
-        /* Set Steam compatibility variables (allow existing env to override) */ 
+
+        /* Set Steam compatibility variables (allow existing env to override) */
         setenv_if_unset("STEAM_COMPAT_CLIENT_INSTALL_PATH", proton_path);
         setenv_if_unset("STEAM_COMPAT_SESSION_ID", "yawl-default");
         setenv_if_unset("STEAM_COMPAT_APP_ID", "yawl-default");
-        setenv_if_unset("UMU_ID", "yawl-default"); /* For compatibility with Proton */ 
-        
-        /* Create default compat data path if none specified */ 
+        setenv_if_unset("UMU_ID", "yawl-default"); /* For compatibility with Proton */
+
+        /* Create default compat data path if none specified */
         const char *wineprefix = getenv("WINEPREFIX");
         if (wineprefix) {
-            /* Make sure Wineprefix exists beforehand */ 
+            /* Make sure Wineprefix exists beforehand */
             ensure_dir(wineprefix);
             setenv("STEAM_COMPAT_DATA_PATH", wineprefix, 1);
-        }
-        else {
-            /* Look for appid and if not default, create an apposite prefix */
+        } else {
+            /* Look for appid and if not default, create an apposite [sic] prefix */
             char *appid = getenv("STEAM_COMPAT_APP_ID");
             char *prefix_path = nullptr;
 
@@ -742,7 +745,7 @@ int main(int argc, char *argv[]) {
     }
 
     result = setup_runtime(&opts);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed setting up the runtime");
+    LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Failed setting up the runtime");
 
     if (!is_exec_file(opts.exec_path)) {
         LOG_ERROR("Executable not found or not executable: %s", opts.exec_path);
