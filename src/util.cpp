@@ -351,6 +351,9 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     if (!url || !output_path)
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
 
+    /* Similar, but for issues relating to system CA root certificates. Use the bundled certificate if this fails. */
+    static char broken_user_certificate_workaround = 0;
+
     /* Just always keep this disabled if we ever failed to verify the peer, it's most likely a misconfiguration on
      * behalf of the user */
     static char broken_user_ssl_workaround = 0;
@@ -389,12 +392,14 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, !broken_user_ssl_workaround);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
 
-    /* Copied from curl's `src/tool_operate.c`, use the embedded CA certificate data */
-    struct curl_blob blob;
-    blob.data = (void *)curl_ca_embed;
-    blob.len = sizeof(curl_ca_embed);
-    blob.flags = CURL_BLOB_NOCOPY;
-    curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &blob);
+    /* Use the embedded CA certificate data if we ran into an error related to this */
+    struct curl_blob blob = {};
+    if (broken_user_certificate_workaround) {
+        blob.data = (void *)curl_ca_embed;
+        blob.len = sizeof(curl_ca_embed);
+        blob.flags = CURL_BLOB_NOCOPY;
+        curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &blob);
+    }
 
     /* progress meter */
     const char *filename = nullptr;
@@ -421,9 +426,31 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
+        /* Awesome Code */
+        // clang-format off
+        if (!broken_user_certificate_workaround &&
+            ((res == CURLE_SSL_CONNECT_ERROR) ||
+             (res == CURLE_SSL_CERTPROBLEM) ||
+             (res == CURLE_SSL_CIPHER) ||
+             (res == CURLE_USE_SSL_FAILED) ||
+             (res == CURLE_SSL_CACERT_BADFILE) ||
+             (res == CURLE_SSL_CRL_BADFILE) ||
+             (res == CURLE_SSL_ISSUER_ERROR) ||
+             (res == CURLE_SSL_PINNEDPUBKEYNOTMATCH) ||
+             (res == CURLE_SSL_INVALIDCERTSTATUS) ||
+             (res == CURLE_SSL_CLIENTCERT)))
+        {
+        // clang-format on
+            broken_user_certificate_workaround = 1;
+            LOG_ERROR(
+                "Your system's CA root certificate store is either missing or misconfigured. CURL error %u:\n\t%s", res,
+                curl_easy_strerror(res));
+            LOG_ERROR("Trying to download %s again with the bundled certificates...", url);
+            return download_file(url, output_path, headers);
+        }
         if (!broken_user_ssl_workaround && (res == CURLE_PEER_FAILED_VERIFICATION)) {
             broken_user_ssl_workaround = 1;
-            LOG_ERROR("SSL Peer verification failed. Trying to download %s again without it...", url);
+            LOG_ERROR("SSL peer verification failed. Fix your system's network configuration, but trying to download %s again without it...", url);
             return download_file(url, output_path, headers);
         }
         return MAKE_RESULT(SEV_ERROR, CAT_NETWORK, res);
