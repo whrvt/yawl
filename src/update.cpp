@@ -7,6 +7,8 @@
  * See the full license text in the repository LICENSE file.
  */
 
+#include "config.h"
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,11 +19,13 @@
 #define G_LOG_DOMAIN "json-glib"
 #include "json-glib/json-glib.h"
 
-#include "macros.h"
-#include "config.h"
-#include "log.h"
-#include "update.h"
-#include "util.h"
+#include "log.hpp"
+#include "macros.hpp"
+#include "update.hpp"
+#include "util.hpp"
+#include "yawlconfig.hpp"
+
+#include "fmt/printf.h"
 
 #define GITHUB_API_RELEASES_URL "https://api.github.com/repos/whrvt/" PROG_NAME "/releases/latest"
 #define GITHUB_RELEASES_PAGE_URL PACKAGE_URL "/releases/download"
@@ -141,7 +145,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
         while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, src)) > 0) {
             if (fwrite(buffer, 1, bytes_read, dst) != bytes_read) {
                 RESULT result = result_from_errno();
-                LOG_RESULT(LOG_ERROR, result, "Failed to write to destination file");
+                LOG_RESULT(Level::Error, result, "Failed to write to destination file");
                 unlink(actual_dest);
                 return result;
             }
@@ -149,7 +153,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
 
         if (ferror(src)) {
             RESULT result = result_from_errno();
-            LOG_RESULT(LOG_ERROR, result, "Failed to read from source file");
+            LOG_RESULT(Level::Error, result, "Failed to read from source file");
             unlink(actual_dest);
             return result;
         }
@@ -174,7 +178,7 @@ static RESULT copy_file_raw(const char *source, const char *destination, int use
                 return result;
             } else {
                 RESULT result = result_from_errno();
-                LOG_RESULT(LOG_ERROR, result, "Failed to rename temporary file");
+                LOG_RESULT(Level::Error, result, "Failed to rename temporary file");
                 unlink(actual_dest);
                 return result;
             }
@@ -189,7 +193,7 @@ static RESULT copy_file(const char *source, const char *destination) {
     RESULT result = RESULT_OK;
 
     autofree char *backup_file = nullptr;
-    join_paths(backup_file, g_yawl_dir, PROG_NAME BACKUP_SUFFIX);
+    join_paths(backup_file, config::yawl_dir, PROG_NAME BACKUP_SUFFIX);
 
     if (access(destination, F_OK) == 0) {
         if (access(backup_file, F_OK) == 0)
@@ -199,13 +203,13 @@ static RESULT copy_file(const char *source, const char *destination) {
                 LOG_DEBUG("Creating backup using copy (cross-device)");
                 result = copy_file_raw(destination, backup_file, 0);
                 if (FAILED(result)) {
-                    LOG_RESULT(LOG_ERROR, result, "Failed to create backup copy");
+                    LOG_RESULT(Level::Error, result, "Failed to create backup copy");
                     return result;
                 }
             } else {
                 result = result_from_errno();
                 /* too dangerous to try continuing */
-                LOG_RESULT(LOG_ERROR, result, "Failed to create backup");
+                LOG_RESULT(Level::Error, result, "Failed to create backup");
                 return result;
             }
         }
@@ -213,14 +217,14 @@ static RESULT copy_file(const char *source, const char *destination) {
 
     result = copy_file_raw(source, destination, 1);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to copy new binary");
+        LOG_RESULT(Level::Error, result, "Failed to copy new binary");
         if (access(backup_file, F_OK) == 0) {
             LOG_INFO("Restoring from backup");
             if (rename(backup_file, destination) != 0) {
                 if (errno == EXDEV) {
                     RESULT restore_result = copy_file_raw(backup_file, destination, 0);
                     if (FAILED(restore_result))
-                        LOG_RESULT(LOG_ERROR, restore_result, "Failed to restore from backup");
+                        LOG_RESULT(Level::Error, restore_result, "Failed to restore from backup");
                 }
             }
         }
@@ -319,10 +323,10 @@ static RESULT check_for_updates(void) {
     LOG_INFO("Checking for updates...");
 
     /* Download release information */
-    join_paths(release_file, g_yawl_dir, RELEASE_INFO_FILE);
+    join_paths(release_file, config::yawl_dir, RELEASE_INFO_FILE);
     result = download_file(GITHUB_API_RELEASES_URL, release_file, headers);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to download release information");
+        LOG_RESULT(Level::Error, result, "Failed to download release information");
         return result;
     }
 
@@ -348,7 +352,7 @@ static RESULT check_for_updates(void) {
     /* Save download URL for later use */
     autoclose FILE *fp = fopen(release_file, "w");
     if (fp)
-        fprintf(fp, "%s", download_url);
+        fmt::fprintf(fp, "%s", download_url);
 
     return MAKE_RESULT(SEV_INFO, CAT_GENERAL, E_UPDATE_AVAILABLE);
 }
@@ -362,7 +366,7 @@ static RESULT perform_update(void) {
     RESULT result;
 
     /* Get the download URL from the saved file */
-    join_paths(release_file, g_yawl_dir, RELEASE_INFO_FILE);
+    join_paths(release_file, config::yawl_dir, RELEASE_INFO_FILE);
 
     autoclose FILE *fp = fopen(release_file, "r");
     if (!fp)
@@ -397,20 +401,20 @@ static RESULT perform_update(void) {
 
     /* Use yawl_dir if exec dir is unwritable */
     if (!download_dir) {
-        LOG_DEBUG("Using yawl directory for download: %s", g_yawl_dir);
-        join_paths(temp_binary, g_yawl_dir, NEW_BINARY_FILE);
+        LOG_DEBUG("Using yawl directory for download: %s", config::yawl_dir);
+        join_paths(temp_binary, config::yawl_dir, NEW_BINARY_FILE);
     }
 
     LOG_INFO("Downloading update from %s", download_url, temp_binary);
     result = download_file(download_url, temp_binary, nullptr);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to download update");
+        LOG_RESULT(Level::Error, result, "Failed to download update");
         return result;
     }
 
     result = make_executable(temp_binary);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to set executable permissions");
+        LOG_RESULT(Level::Error, result, "Failed to set executable permissions");
         return result;
     }
 

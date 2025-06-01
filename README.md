@@ -22,6 +22,8 @@ Current useful environment variables:
   - `update`: Check for, download, and install available updates
   - `exec=PATH`: Set the executable to run in the container (default: `/usr/bin/wine`)
   - `wineserver=PATH`: Set the wineserver executable path when creating a wrapper
+  - `proton=PATH`: Set the Proton script to run in the container (overrides `exec=`)
+  - `proton_verb=NAME`: Verb to use to run Proton (default: `run`)
   - `make_wrapper=NAME`: Create a configuration file and symlink for easy reuse
   - `config=NAME`: Use a specific named configuration (can be the full path or lone config name with/without .cfg)
     Configs are loaded from the default install/configs directory, if specified by symlink or without a full path.

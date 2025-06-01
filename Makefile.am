@@ -1,16 +1,40 @@
-AUTOMAKE_OPTIONS = foreign
+AUTOMAKE_OPTIONS := foreign
 
-bin_PROGRAMS = yawl
+bin_PROGRAMS := yawl
 
-yawl_SOURCES = src/yawl.c src/util.c src/util.h src/apparmor.c src/apparmor.h src/bwrap_data.h src/log.c src/log.h \
-	src/result.c src/result.h src/update.c src/update.h src/macros.h src/nsenter.c src/nsenter.h config.h
-#yawl_CXXFLAGS = -O0 -flto=full -ffunction-sections -fdata-sections -fsanitize=address,undefined,cfi,safe-stack -fvisibility=hidden
-yawl_CXXFLAGS = -Os -flto=full -ffunction-sections -fdata-sections -Wl,--gc-sections,-s
-yawl_CFLAGS = $(yawl_CXXFLAGS)
-yawl_LDFLAGS = $(yawl_CXXFLAGS)
-yawl_LDADD = $(NON_GLIB_LIBS) $(ALL_GLIB_LIBS)
+yawl_SOURCES := src/yawl.cpp src/util.cpp src/apparmor.cpp src/log.cpp src/result.cpp src/update.cpp src/nsenter.cpp src/yawlconfig.cpp
+if USE_ASAN
+yawl_CXXFLAGS := -march=x86-64 -mtune=generic -Og -ggdb -gdwarf-4 -fsanitize=address,undefined,cfi -fvisibility=hidden -Wno-backend-plugin
+else
+yawl_CXXFLAGS := -march=x86_64 -mtune=x86_64 -static-libgcc -fno-rtti -fno-exceptions -static-libstdc++ -static -fPIC -fPIE -static-pie -Os -ffunction-sections -fdata-sections -Wl,--gc-sections,-s
+endif
+yawl_LDFLAGS := $(yawl_CXXFLAGS)
+yawl_LDADD := $(NON_GLIB_LIBS) $(ALL_GLIB_LIBS)
 
 EXTRA_DIST = README.md assets/external/bwrap-userns-restrict assets/external/cacert.pem
+
+compile_commands.json: mostlyclean-compile
+	@python --version &>/dev/null || { echo python is unavailable to generate a compile_commands.json, install python && exit 1; }
+	$(MAKE) ZIG_VERBOSE_CC=1 $(AM_MAKEFLAGS) $(yawl_OBJECTS) $(yawl_DEPENDENCIES) $(EXTRA_yawl_DEPENDENCIES) 2>collect.log && \
+	python $(abs_top_srcdir)/build-aux/zig-cc-db-parser.py collect.log && rm collect.log
+
+$(abs_top_srcdir)/.clangd: compile_commands.json
+	@if [ -f $@ ]; then \
+		if grep -q "CompilationDatabase:" $@; then \
+			sed -i 's|CompilationDatabase:.*|CompilationDatabase: $(shell realpath --relative-to=$(abs_top_srcdir) $(CURDIR))|g' $@; \
+		else \
+			echo "CompileFlags:" >> $@; \
+			echo "    CompilationDatabase: $(shell realpath --relative-to=$(abs_top_srcdir) $(CURDIR))" >> $@; \
+		fi; \
+	else \
+		echo "CompileFlags:" > $@; \
+		echo "    CompilationDatabase: $(shell realpath --relative-to=$(abs_top_srcdir) $(CURDIR))" >> $@; \
+		echo "" >> $@; \
+		echo "InlayHints:" >> $@; \
+		echo "    Enabled: No" >> $@; \
+	fi
+
+compile-commands: $(abs_top_srcdir)/.clangd
 
 clean-local: uninstall
 	rm -rf $(yawl_OBJECTS) src/$(DEPDIR)
@@ -21,4 +45,3 @@ clean-deps:
 
 maintainer-clean-local: clean-deps
 
-distclean-local: clean-deps

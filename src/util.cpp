@@ -16,10 +16,12 @@
 #include "archive.h"
 #include "archive_entry.h"
 #include "curl/curl.h"
-#include "log.h"
-#include "macros.h"
 #include "openssl/evp.h"
-#include "util.h"
+
+#include "log.hpp"
+#include "macros.hpp"
+#include "util.hpp"
+#include "yawlconfig.hpp"
 
 void _append_sep_impl(char *result_ptr[], const char *separator, size_t num_strings, ...) {
     char *old_result = *result_ptr;
@@ -186,7 +188,7 @@ RESULT remove_dir(const char *path) {
                 }
             } else if (unlink(full_path) != 0) {
                 RESULT unlink_result = result_from_errno();
-                LOG_RESULT(LOG_WARNING, unlink_result, "Failed to remove file");
+                LOG_RESULT(Level::Warning, unlink_result, "Failed to remove file");
                 result = unlink_result; /* remember the error, but continue */
             }
         }
@@ -198,7 +200,7 @@ RESULT remove_dir(const char *path) {
 
     if (rmdir(path) != 0) {
         RESULT rmdir_result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, rmdir_result, "Failed to remove directory");
+        LOG_RESULT(Level::Error, rmdir_result, "Failed to remove directory");
         return rmdir_result;
     }
 
@@ -209,14 +211,14 @@ RESULT calculate_sha256(const char *file_path, char hash_str[65]) {
     FILE *fp = fopen(file_path, "rb");
     if (!fp) {
         RESULT result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to open file for hash calculation");
+        LOG_RESULT(Level::Error, result, "Failed to open file for hash calculation");
         return result;
     }
 
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     if (!mdctx) {
         RESULT result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_OUT_OF_MEMORY);
-        LOG_RESULT(LOG_ERROR, result, "Failed to create hash context");
+        LOG_RESULT(Level::Error, result, "Failed to create hash context");
         fclose(fp);
         return result;
     }
@@ -224,7 +226,7 @@ RESULT calculate_sha256(const char *file_path, char hash_str[65]) {
     const EVP_MD *md = EVP_sha256();
     if (!md) {
         RESULT result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_NOT_SUPPORTED);
-        LOG_RESULT(LOG_ERROR, result, "Failed to get SHA256 algorithm");
+        LOG_RESULT(Level::Error, result, "Failed to get SHA256 algorithm");
         EVP_MD_CTX_free(mdctx);
         fclose(fp);
         return result;
@@ -232,7 +234,7 @@ RESULT calculate_sha256(const char *file_path, char hash_str[65]) {
 
     if (EVP_DigestInit_ex(mdctx, md, nullptr) != 1) {
         RESULT result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_UNKNOWN);
-        LOG_RESULT(LOG_ERROR, result, "Failed to initialize hash context");
+        LOG_RESULT(Level::Error, result, "Failed to initialize hash context");
         EVP_MD_CTX_free(mdctx);
         fclose(fp);
         return result;
@@ -245,7 +247,7 @@ RESULT calculate_sha256(const char *file_path, char hash_str[65]) {
     while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, fp)) > 0) {
         if (EVP_DigestUpdate(mdctx, buffer, bytes_read) != 1) {
             result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_UNKNOWN);
-            LOG_RESULT(LOG_ERROR, result, "Failed to update hash context");
+            LOG_RESULT(Level::Error, result, "Failed to update hash context");
             EVP_MD_CTX_free(mdctx);
             fclose(fp);
             return result;
@@ -259,7 +261,7 @@ RESULT calculate_sha256(const char *file_path, char hash_str[65]) {
 
     if (EVP_DigestFinal_ex(mdctx, hash, &hash_len) != 1) {
         result = MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_UNKNOWN);
-        LOG_RESULT(LOG_ERROR, result, "Failed to finalize hash");
+        LOG_RESULT(Level::Error, result, "Failed to finalize hash");
         EVP_MD_CTX_free(mdctx);
         return result;
     }
@@ -281,11 +283,11 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
     int found = 0;
     RESULT result = RESULT_OK;
 
-    join_paths(local_sums_path, g_yawl_dir, "SHA256SUMS");
+    join_paths(local_sums_path, config::yawl_dir, "SHA256SUMS");
 
     result = download_file(hash_url, local_sums_path, nullptr);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_ERROR, result, "Failed to download hash file");
+        LOG_RESULT(Level::Error, result, "Failed to download hash file");
         unlink(local_sums_path);
         free(local_sums_path);
         return result;
@@ -294,7 +296,7 @@ RESULT get_online_slr_sha256sum(const char *file_name, const char *hash_url, cha
     fp = fopen(local_sums_path, "r");
     if (!fp) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to open downloaded hash file");
+        LOG_RESULT(Level::Error, result, "Failed to open downloaded hash file");
         unlink(local_sums_path);
         free(local_sums_path);
         return result;
@@ -349,17 +351,21 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     if (!url || !output_path)
         return MAKE_RESULT(SEV_ERROR, CAT_GENERAL, E_INVALID_ARG);
 
+    /* Just always keep this disabled if we ever failed to verify the peer, it's most likely a misconfiguration on
+     * behalf of the user */
+    static char broken_user_ssl_workaround = 0;
+
     CURL *curl = curl_easy_init();
     if (!curl) {
         RESULT result = MAKE_RESULT(SEV_ERROR, CAT_NETWORK, E_CURL);
-        LOG_RESULT(LOG_ERROR, result, "Failed to initialize curl");
+        LOG_RESULT(Level::Error, result, "Failed to initialize curl");
         return result;
     }
 
     FILE *fp = fopen(output_path, "wb");
     if (!fp) {
         RESULT result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to open output file for download");
+        LOG_RESULT(Level::Error, result, "Failed to open output file for download");
         curl_easy_cleanup(curl);
         return result;
     }
@@ -380,7 +386,7 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullptr);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, !broken_user_ssl_workaround);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
 
     /* Copied from curl's `src/tool_operate.c`, use the embedded CA certificate data */
@@ -414,8 +420,14 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
 
     curl_easy_cleanup(curl);
 
-    if (res != CURLE_OK)
+    if (res != CURLE_OK) {
+        if (!broken_user_ssl_workaround && (res == CURLE_PEER_FAILED_VERIFICATION)) {
+            broken_user_ssl_workaround = 1;
+            LOG_ERROR("SSL Peer verification failed. Trying to download %s again without it...", url);
+            return download_file(url, output_path, headers);
+        }
         return MAKE_RESULT(SEV_ERROR, CAT_NETWORK, res);
+    }
 
     return RESULT_OK;
 }
@@ -468,7 +480,7 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
 
     if (archive_read_open_filename(a, archive_path, BUFFER_SIZE) != ARCHIVE_OK) {
         result = MAKE_RESULT(SEV_ERROR, CAT_FILESYSTEM, E_IO_ERROR);
-        LOG_RESULT(LOG_ERROR, result, "Failed to open archive for extraction");
+        LOG_RESULT(Level::Error, result, "Failed to open archive for extraction");
         return result;
     }
 

@@ -11,9 +11,7 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+
 
 /*
  * RESULT bit layout:
@@ -34,6 +32,7 @@ typedef int32_t RESULT;
 
 /* Success result */
 #define RESULT_OK ((RESULT)0)
+#define RESULT_FAIL ((RESULT)-1) /* Only use for fatal errors */
 
 /* Error categories */
 #define CAT_GENERAL 0
@@ -107,6 +106,4 @@ const char *result_to_string(RESULT result);
     (FAILED(result) ? MAKE_RESULT(RESULT_SEVERITY(result), new_cat, RESULT_CODE(result)) : (result))
  */
 
-#ifdef __cplusplus
-}
-#endif
+

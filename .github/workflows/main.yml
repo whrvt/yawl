@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - master
+      - dev
     tags:
       - v*.*.*
 
@@ -19,6 +20,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref_type }}
   cancel-in-progress: true
 
+env:
+  CCACHE_DIR: /ccache
 
 jobs:
   version:
@@ -62,12 +65,32 @@ jobs:
       shell: bash
       run: |
         pacman -Syu --noconfirm
-        pacman -S --noconfirm cmake python musl meson git
-    - name: Build
+        pacman -S --noconfirm cmake python musl meson git ccache
+        mkdir ${{ env.CCACHE_DIR }}
+    - name: ccache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ env.CCACHE_DIR }}
+        key: ccache-${{ github.workflow }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ github.workflow }}-
+    - name: Cache build-time dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ./deps/yawl
+        key: deps-${{ github.workflow }}-${{ hashFiles('configure.ac') }}
+        restore-keys: |
+          deps-${{ github.workflow }}-${{ hashFiles('configure.ac') }}
+    - name: Configure
       shell: bash
       run: |
         ./autogen.sh
         ./configure
+    - name: Build
+      shell: bash
+      run: |
         make
     - uses: actions/upload-artifact@v4
       with:

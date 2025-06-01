@@ -10,10 +10,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "apparmor.h"
-#include "log.h"
-#include "macros.h"
-#include "util.h"
+#include "apparmor.hpp"
+#include "log.hpp"
+#include "macros.hpp"
+#include "util.hpp"
+#include "yawlconfig.hpp"
 
 #define APPARMOR_DIR "/etc/apparmor.d"
 #define APPARMOR_PROFILE_NAME "bwrap-userns-restrict-" PROG_NAME
@@ -29,8 +30,8 @@ static RESULT test_container(const char *entry_point) {
     int ret = 0;
     int apparmor_issue = 0;
 
-    join_paths(stdout_file, g_yawl_dir, "test_stdout.tmp");
-    join_paths(stderr_file, g_yawl_dir, "test_stderr.tmp");
+    join_paths(stdout_file, config::yawl_dir, "test_stdout.tmp");
+    join_paths(stderr_file, config::yawl_dir, "test_stderr.tmp");
 
     append_sep(test_cmd, " ", entry_point, "--verb=waitforexitandrun", "--", "/bin/true", ">", stdout_file, "2>",
                stderr_file);
@@ -78,20 +79,20 @@ static RESULT write_temp_apparmor_profile(char *temp_path[]) {
     autoclose FILE *fp = nullptr;
 
     /* Create a temporary file in the yawl directory */
-    join_paths(*temp_path, g_yawl_dir, APPARMOR_PROFILE_NAME ".tmp");
+    join_paths(*temp_path, config::yawl_dir, APPARMOR_PROFILE_NAME ".tmp");
 
     LOG_DEBUG("Writing temporary AppArmor profile to: %s", *temp_path);
 
     fp = fopen(*temp_path, "wb");
     if (!fp) {
         RESULT result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to create temporary AppArmor profile");
+        LOG_RESULT(Level::Error, result, "Failed to create temporary AppArmor profile");
         return result;
     }
 
     if (fwrite(bwrap_userns_restrict, 1, sizeof(bwrap_userns_restrict), fp) != sizeof(bwrap_userns_restrict)) {
         RESULT result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to write AppArmor profile data");
+        LOG_RESULT(Level::Error, result, "Failed to write AppArmor profile data");
         unlink(*temp_path);
         return result;
     }
@@ -154,7 +155,7 @@ RESULT handle_apparmor(const char *entry_point) {
     /* Try to install the AppArmor profile */
     result = install_apparmor_profile();
     if (FAILED(result)) {
-        LOG_RESULT(LOG_DEBUG, result, "Failed to install AppArmor profile");
+        LOG_RESULT(Level::Debug, result, "Failed to install AppArmor profile");
 
         LOG_SYSTEM("Failed to install AppArmor profile. Container may not work correctly.\n"
                    "Please follow this guide to manually install the AppArmor profile:\n"
@@ -166,7 +167,7 @@ RESULT handle_apparmor(const char *entry_point) {
     LOG_DEBUG("Testing container again after AppArmor profile installation");
     result = test_container(entry_point);
     if (FAILED(result)) {
-        LOG_RESULT(LOG_DEBUG, result, "Container still not working after AppArmor profile installation");
+        LOG_RESULT(Level::Debug, result, "Container still not working after AppArmor profile installation");
 
         LOG_SYSTEM("Container still not working after AppArmor profile installation.\n"
                    "You may need to restart the system for AppArmor changes to take effect.");

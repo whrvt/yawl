@@ -3,7 +3,7 @@
 
 set -e
 
-ZIG_VERSION="0.15.0-dev.532+a3693aae3"
+ZIG_VERSION="0.15.0-dev.589+23c817548"
 MIMALLOC_VERSION="3.0.3"
 LIBUNISTRING_VERSION="1.3"
 LIBIDN2_VERSION="2.3.7"
@@ -19,6 +19,12 @@ LIBNOTIFY_VERSION="0.8.4"
 JSON_GLIB_VERSION="1.10.6"
 LIBARCHIVE_VERSION="3.7.7"
 LIBCAP_VERSION="2.27" # Newer versions have useless Go stuff
+FMT_VERSION="11.2.0"
+
+CMAKE="${CMAKE:-cmake}"
+MESON="${MESON:-meson}"
+NINJA="${NINJA:-ninja}"
+USING_MUSL="${USING_MUSL:-ON}"
 
 # Parse arguments
 LIB="$1"
@@ -75,8 +81,8 @@ case "$LIB" in
         mkdir -p out/release
         cd out/release
         env CXX="$CXX" LD="$CXX" CFLAGS="$CXXFLAGS" \
-            CXXFLAGS="$CXXFLAGS -xc++" LDFLAGS="$CXXFLAGS -xnone" cmake \
-            -DCMAKE_C_COMPILER="$ZIGCC" \
+            CXXFLAGS="$CXXFLAGS -xc++" LDFLAGS="$CXXFLAGS -xnone" $CMAKE \
+            -DCMAKE_C_COMPILER="$CC" \
             -DCMAKE_C_FLAGS="$CXXFLAGS" \
             -DCMAKE_CXX_COMPILER="$CXX" \
             -DCMAKE_CXX_FLAGS="$CXXFLAGS -xc++" \
@@ -87,7 +93,7 @@ case "$LIB" in
             -DMI_BUILD_SHARED=OFF \
             -DMI_BUILD_TESTS=OFF \
             -DMI_INSTALL_TOPLEVEL=ON \
-            -DMI_LIBC_MUSL=ON \
+            -DMI_LIBC_MUSL=$USING_MUSL \
             -DMI_BUILD_STATIC=OFF \
             -DMI_BUILD_OBJECT=ON ../.. && \
         make -j"$JOBS" && \
@@ -471,7 +477,7 @@ case "$LIB" in
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
             "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS -lm"
         )
-        "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
+        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
                             -Ddebug=false \
@@ -536,8 +542,8 @@ case "$LIB" in
                             -Dglib:libelf=disabled \
                             -Dglib:introspection=disabled build .
         sed -i 's|.*atomic_dep = .*|atomic_dep = []|g' subprojects/glib/meson.build # this is the reason the build was failing without musl installed...?
-        "${FLAGS_MESON[@]}" meson compile -C build
-        "${FLAGS_MESON[@]}" meson install -C build || true # WTF?
+        "${FLAGS_MESON[@]}" $MESON compile -C build
+        "${FLAGS_MESON[@]}" $MESON install -C build || true # WTF?
 
         # PISS OFF
         find "$PWD"/ -iregex ".*meson-private.*\.pc" -execdir cp '{''}' "$PREFIX/lib/pkgconfig" ';'
@@ -563,7 +569,7 @@ case "$LIB" in
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
             "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS"
         )
-        "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
+        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
                             -Dtests=false \
@@ -578,8 +584,8 @@ case "$LIB" in
                             -Ddefault_library=static \
                             -Ddefault_both_libraries=static \
                             -Db_staticpic=true build . 
-        "${FLAGS_MESON[@]}" meson compile -C build && \
-        "${FLAGS_MESON[@]}" meson install -C build || exit 1
+        "${FLAGS_MESON[@]}" $MESON compile -C build && \
+        "${FLAGS_MESON[@]}" $MESON install -C build || exit 1
         ;;
 
     json-glib)
@@ -595,7 +601,7 @@ case "$LIB" in
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
             "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS"
         )
-        "${FLAGS_MESON[@]}" meson setup --prefix="$PREFIX" \
+        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
                             -Dintrospection=disabled \
@@ -613,8 +619,8 @@ case "$LIB" in
                             -Ddefault_library=static \
                             -Ddefault_both_libraries=static \
                             -Db_staticpic=true build . 
-        "${FLAGS_MESON[@]}" meson compile -C build && \
-        "${FLAGS_MESON[@]}" meson install -C build || exit 1
+        "${FLAGS_MESON[@]}" $MESON compile -C build && \
+        "${FLAGS_MESON[@]}" $MESON install -C build || exit 1
         ;;
 
     libcap)
@@ -645,8 +651,8 @@ distclean: clean
 	$(DISTCLEAN)
 EOF
         make prefix="$PREFIX" \
-            CC="$ZIGCC" \
-            LD="$ZIGCC" \
+            CC="$CC" \
+            LD="$CC" \
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CXXFLAGS" \
             CXXFLAGS="$CXXFLAGS" \
@@ -654,6 +660,36 @@ EOF
         cp libcap/libcap.a "$PREFIX/lib" && \
         cp -r libcap/include/uapi/linux "$PREFIX/include" && \
         cp libcap/include/sys/capability.h "$PREFIX/include"
+        ;;
+
+    fmt)
+        if [ ! -d "fmt-$FMT_VERSION" ]; then
+            echo "Downloading fmt-$FMT_VERSION..."
+            download_file "https://github.com/fmtlib/fmt/archive/refs/tags/$FMT_VERSION.tar.gz" "fmt.tar.gz"
+            tar -xzf fmt.tar.gz
+            rm fmt.tar.gz
+        fi
+
+        cd "fmt-$FMT_VERSION"
+
+        mkdir -p build
+        cd build
+        env CXX="$CXX" LD="$CXX" CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS" LDFLAGS="$LDFLAGS" $CMAKE \
+            -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DFMT_PEDANTIC=OFF \
+            -DFMT_WERROR=OFF \
+            -DFMT_DOC=OFF \
+            -DFMT_INSTALL=ON \
+            -DFMT_TEST=OFF \
+            -DFMT_FUZZ=OFF \
+            -DFMT_CUDA_TEST=OFF \
+            -DFMT_OS=ON \
+            -DFMT_MODULE=OFF \
+            -DFMT_SYSTEM_HEADERS=OFF \
+            -DFMT_UNICODE=ON .. && \
+        make -j"$JOBS" && \
+        make install || exit 1
         ;;
 
     cacert)

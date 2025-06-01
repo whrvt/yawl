@@ -16,13 +16,20 @@
 #include <string.h>
 #include <sys/prctl.h>
 
-#include "apparmor.h"
-#include "log.h"
-#include "macros.h"
-#include "nsenter.h"
-#include "result.h"
-#include "update.h"
-#include "util.h"
+#include "apparmor.hpp"
+#include "log.hpp"
+#include "macros.hpp"
+#include "nsenter.hpp"
+#include "result.hpp"
+#include "update.hpp"
+#include "util.hpp"
+#include "yawlconfig.hpp"
+
+#include "fmt/compile.h"
+#include "fmt/core.h"
+#include "fmt/printf.h"
+
+using namespace fmt::literals;
 
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
 #define RUNTIME_VERSION "sniper"
@@ -34,37 +41,35 @@
 #define DEFAULT_EXEC_PATH "/usr/bin/wine"
 #define CONFIG_EXTENSION ".cfg"
 
-const char *g_yawl_dir;
-const char *g_config_dir;
-
-static constexpr const char *const usage_text =
-    R"_(Usage: %s [args_for_executable...]
+static void print_usage() {
+    fmt::print(R"_(Usage: {2} [args_for_executable...]
 Environment variables:
-  YAWL_VERBS       Semicolon-separated list of verbs to control )_" PROG_NAME R"_( behavior:
-                   - 'version'   Just print the version of )_" PROG_NAME R"_( and exit
+  YAWL_VERBS       Semicolon-separated list of verbs to control {0} behavior:
+                   - 'version'   Just print the version of {0} and exit
                    - 'verify'    Verify the runtime before running (default: only verify after install)
                                  Also can be used to check for runtime updates (will be a separate option in the future)
                    - 'reinstall' Force reinstallation of the runtime
                    - 'help'      Display this help and exit
-                   - 'check'     Check for updates to )_" PROG_NAME R"_( (without downloading/installing)
+                   - 'check'     Check for updates to {0} (without downloading/installing)
                    - 'update'    Check for, download, and install available updates
-                   - 'exec=PATH' Set the executable to run in the container (default: )_" DEFAULT_EXEC_PATH R"_()
+                   - 'exec=PATH' Set the executable to run in the container (default: {1})
                    - 'make_wrapper=NAME' Create a wrapper configuration and symlink
                    - 'config=NAME'       Use a specific configuration file
                    - 'wineserver=PATH'   Set the wineserver executable path when creating a wrapper
+                   - 'proton=PATH':      Set the Proton script to run in the container (overrides 'exec=')
+                   - 'proton_verb=NAME': Verb to use to run Proton (default: 'run')
                    - 'enter=PID'         Run an executable in the same container as PID
 
             Examples:
-                YAWL_VERBS="make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver" %s
-                YAWL_VERBS="verify;reinstall" %s winecfg
-                YAWL_VERBS="exec=/opt/wine/bin/wine64" %s winecfg
-                YAWL_VERBS="make_wrapper=cool-wine;exec=/opt/wine/bin/wine64" %s
-                YAWL_VERBS="enter=$(pgrep game.exe)" %s cheatengine.exe
+                YAWL_VERBS="make_wrapper=osu;exec=/opt/wine-osu/bin/wine;wineserver=/opt/wine-osu/bin/wineserver" {2}
+                YAWL_VERBS="verify;reinstall" {2} winecfg
+                YAWL_VERBS="exec=/opt/wine/bin/wine64" {2} winecfg
+                YAWL_VERBS="make_wrapper=cool-wine;exec=/opt/wine/bin/wine64" {2}
+                YAWL_VERBS="enter=$(pgrep game.exe)" {2} cheatengine.exe
 
-  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/)_" PROG_NAME
-    R"_( or $HOME/.local/share/)_" PROG_NAME R"_(
+  YAWL_INSTALL_DIR Override the default installation directory of $XDG_DATA_HOME/{0} or $HOME/.local/share/{0}
             Example:
-                YAWL_INSTALL_DIR="$HOME/programs/winelauncher" YAWL_VERBS="reinstall" %s
+                YAWL_INSTALL_DIR="$HOME/programs/winelauncher" YAWL_VERBS="reinstall" {2}
 
   YAWL_LOG_LEVEL   Control the verbosity of the logging output. Valid values are:
                    - 'none'     Turn off all logging
@@ -75,13 +80,9 @@ Environment variables:
 
   YAWL_LOG_FILE    Specify a custom path for the log file. By default, logs are written to:
                    - Terminal output (only when running interactively)
-                   - $YAWL_INSTALL_DIR/)_" PROG_NAME R"_(.log
-)_";
-
-static void print_usage() {
-    printf(usage_text, program_invocation_short_name, program_invocation_short_name, program_invocation_short_name,
-           program_invocation_short_name, program_invocation_short_name, program_invocation_short_name,
-           program_invocation_short_name); // lol
+                   - $YAWL_INSTALL_DIR/{0}.log
+)_"_cf,
+               PROG_NAME, DEFAULT_EXEC_PATH, program_invocation_short_name);
 }
 
 struct options {
@@ -96,7 +97,16 @@ struct options {
     const char *make_wrapper; /* Name of the wrapper to create (nullptr = don't create) */
     const char *config;       /* Name of the config to use (nullptr = use argv[0] or default) */
     const char *wineserver;   /* Path to the wineserver binary (nullptr = don't create wineserver wrapper) */
+    const char *proton;       /* Path to the proton script */
+    const char *proton_verb;  /* Verb to use to run proton (default: run)*/
 };
+
+/* Shortcut to override already existing environmental variables */
+static void setenv_if_unset(const char *name, const char *value) {
+    if (!getenv(name)) {
+        setenv(name, value, 1);
+    }
+}
 
 /* Parse a single option string and update the options structure */
 static RESULT parse_option(nonnull_charp option, struct options *opts) {
@@ -127,8 +137,17 @@ static RESULT parse_option(nonnull_charp option, struct options *opts) {
         opts->config = strdup(STRING_AFTER_PREFIX(option, "config="));
     } else if (LCSTRING_PREFIX(option, "wineserver=")) {
         opts->wineserver = expand_path(STRING_AFTER_PREFIX(option, "wineserver="));
+    } else if (LCSTRING_PREFIX(option, "proton=")) {
+        opts->proton = expand_path(STRING_AFTER_PREFIX(option, "proton="));
+    } else if (LCSTRING_PREFIX(option, "proton_verb=")) {
+        opts->proton_verb = expand_path(STRING_AFTER_PREFIX(option, "proton_verb="));
     } else {
         return MAKE_RESULT(SEV_WARNING, CAT_CONFIG, E_UNKNOWN); /* Unknown option */
+    }
+
+    /* proton= takes precedence over exec= */
+    if (opts->proton && opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH)) {
+        LOG_DEBUG("Ignoring exec, using proton instead.");
     }
 
     return RESULT_OK;
@@ -162,46 +181,6 @@ static RESULT parse_env_options(struct options *opts) {
     return RESULT_OK;
 }
 
-static const char *setup_prog_dir(void) {
-    char *result = nullptr;
-    struct passwd *pw;
-
-    const char *temp_dir = getenv("YAWL_INSTALL_DIR");
-    if (temp_dir)
-        result = expand_path(temp_dir);
-    else if ((temp_dir = getenv("XDG_DATA_HOME")))
-        join_paths(result, temp_dir, PROG_NAME);
-    else if ((temp_dir = getenv("HOME")) || ((pw = getpwuid(getuid())) && (temp_dir = pw->pw_dir)))
-        join_paths(result, temp_dir, ".local/share/" PROG_NAME);
-
-    RESULT ensure_result = ensure_dir(result);
-    if (FAILED(ensure_result)) {
-        fprintf(stderr, "Error: Failed to create or access program directory: %s\n", result_to_string(ensure_result));
-        if (result)
-            fprintf(stderr, "Attempted directory: %s\n", result);
-        free(result);
-        result = nullptr;
-    }
-
-    return result;
-}
-
-static const char *setup_config_dir(void) {
-    char *result = nullptr;
-    join_paths(result, g_yawl_dir, CONFIG_DIR);
-
-    RESULT ensure_result = ensure_dir(result);
-    if (FAILED(ensure_result)) {
-        fprintf(stderr, "Error: Failed to create or access config directory: %s\n", result_to_string(ensure_result));
-        if (result)
-            fprintf(stderr, "Attempted directory: %s\n", result);
-        free(result);
-        result = nullptr;
-    }
-
-    return result;
-}
-
 static RESULT verify_runtime(nonnull_charp runtime_path) {
     autofree char *versions_txt_path = nullptr;
     autofree char *pv_verify_path = nullptr;
@@ -230,7 +209,7 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
 
     if (chdir(runtime_path) != 0) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to change to runtime directory");
+        LOG_RESULT(Level::Error, result, "Failed to change to runtime directory");
         return result;
     }
 
@@ -240,7 +219,7 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
     /* Restore directory */
     if (chdir(old_cwd) != 0) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to restore directory");
+        LOG_RESULT(Level::Error, result, "Failed to restore directory");
         return result;
     }
 
@@ -250,7 +229,7 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
     }
 
     autofree char *entry_point = nullptr;
-    join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
 
     if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
@@ -281,7 +260,7 @@ static RESULT verify_slr_hash(nonnull_charp archive_path, nonnull_charp hash_url
     }
 
     result = calculate_sha256(archive_path, actual_hash);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Could not calculate hash");
+    LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Could not calculate hash");
 
     if (!STRING_EQUALS(expected_hash, actual_hash)) {
         LOG_WARNING("Archive hash mismatch.");
@@ -299,8 +278,8 @@ static RESULT setup_runtime(const struct options *opts) {
     autofree char *runtime_path = nullptr;
     struct stat st;
 
-    join_paths(archive_path, g_yawl_dir, RUNTIME_ARCHIVE_NAME);
-    join_paths(runtime_path, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
+    join_paths(archive_path, config::yawl_dir, RUNTIME_ARCHIVE_NAME);
+    join_paths(runtime_path, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
 
     if (!(stat(runtime_path, &st) == 0 && S_ISDIR(st.st_mode))) {
         LOG_INFO("Installing runtime...");
@@ -309,7 +288,7 @@ static RESULT setup_runtime(const struct options *opts) {
         LOG_INFO("Reinstalling runtime...");
         RESULT remove_result = remove_dir(runtime_path);
         if (FAILED(remove_result))
-            LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove existing runtime directory");
+            LOG_RESULT(Level::Warning, remove_result, "Failed to remove existing runtime directory");
         unlink(archive_path);
     } else if (verify) {
         LOG_INFO("Verifying existing runtime folder integrity...");
@@ -317,7 +296,7 @@ static RESULT setup_runtime(const struct options *opts) {
         if (FAILED(ret)) {
             RESULT remove_result = remove_dir(runtime_path);
             if (FAILED(remove_result))
-                LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove corrupt runtime directory");
+                LOG_RESULT(Level::Warning, remove_result, "Failed to remove corrupt runtime directory");
             LOG_INFO("Reinstalling corrupt runtime folder...");
             install = 1;
         }
@@ -340,7 +319,7 @@ static RESULT setup_runtime(const struct options *opts) {
                 LOG_WARNING("Previous attempt failed, trying one more time...");
                 RESULT remove_result = remove_dir(runtime_path);
                 if (FAILED(remove_result)) {
-                    LOG_RESULT(LOG_WARNING, remove_result, "Failed to remove runtime directory");
+                    LOG_RESULT(Level::Warning, remove_result, "Failed to remove runtime directory");
                 }
                 unlink(archive_path);
             }
@@ -362,16 +341,16 @@ static RESULT setup_runtime(const struct options *opts) {
             if (download) {
                 success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path, nullptr);
                 if (FAILED(success)) {
-                    LOG_RESULT(LOG_ERROR, success, "Failed to download runtime");
+                    LOG_RESULT(Level::Error, success, "Failed to download runtime");
                     unlink(archive_path);
                     continue;
                 }
             }
 
             LOG_INFO("Extracting runtime...");
-            success = extract_archive(archive_path, g_yawl_dir);
+            success = extract_archive(archive_path, config::yawl_dir);
             if (FAILED(success)) {
-                LOG_RESULT(LOG_ERROR, success, "Failed to extract runtime");
+                LOG_RESULT(Level::Error, success, "Failed to extract runtime");
                 unlink(archive_path);
                 continue;
             }
@@ -379,7 +358,7 @@ static RESULT setup_runtime(const struct options *opts) {
             LOG_INFO("Verifying runtime folder integrity...");
             success = verify_runtime(runtime_path);
             if (FAILED(success)) {
-                LOG_RESULT(LOG_ERROR, success, "Runtime verification failed");
+                LOG_RESULT(Level::Error, success, "Runtime verification failed");
                 continue;
             }
         } while (1);
@@ -453,21 +432,23 @@ static RESULT create_config_file(nonnull_charp config_name, const struct options
     RESULT result = RESULT_OK;
 
     /* Build the config file path */
-    join_paths(config_path, g_config_dir, config_name);
+    join_paths(config_path, config::config_dir, config_name);
     append_sep(config_path, "", CONFIG_EXTENSION);
 
     /* Open the config file */
     fp = fopen(config_path, "w");
     if (!fp) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to create config file");
+        LOG_RESULT(Level::Error, result, "Failed to create config file");
         return result;
     }
 
     /* Write the current configuration */
     /* TODO: maybe support adding PATHs and other env vars */
-    if (opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH))
-        fprintf(fp, "exec=%s\n", opts->exec_path);
+    if (opts->proton)
+        fmt::fprintf(fp, "proton=%s\n", opts->proton);
+    else if (opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH))
+        fmt::fprintf(fp, "exec=%s\n", opts->exec_path);
 
     fclose(fp);
     LOG_INFO("Created configuration file: %s", config_path);
@@ -486,7 +467,7 @@ static RESULT create_symlink(nonnull_charp config_name) {
     exec_path = realpath("/proc/self/exe", nullptr);
     if (!exec_path) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to get executable path");
+        LOG_RESULT(Level::Error, result, "Failed to get executable path");
         return result;
     }
 
@@ -509,7 +490,7 @@ static RESULT create_symlink(nonnull_charp config_name) {
     /* Create the symlink */
     if (symlink(exec_path, symlink_path) != 0) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to create symlink");
+        LOG_RESULT(Level::Error, result, "Failed to create symlink");
     } else {
         LOG_INFO("Created symlink: %s -> %s", symlink_path, exec_path);
     }
@@ -587,7 +568,7 @@ static RESULT load_config(nonnull_charp config_name, struct options *opts) {
         config_path = strdup(config_name);
     } else {
         /* Build the config file path in the standard location */
-        join_paths(config_path, g_config_dir, config_name);
+        join_paths(config_path, config::config_dir, config_name);
 
         /* Add extension if not already present */
         if (!strstr(config_name, CONFIG_EXTENSION))
@@ -604,7 +585,7 @@ static RESULT load_config(nonnull_charp config_name, struct options *opts) {
     fp = fopen(config_path, "r");
     if (!fp) {
         result = result_from_errno();
-        LOG_RESULT(LOG_ERROR, result, "Failed to open config file");
+        LOG_RESULT(Level::Error, result, "Failed to open config file");
         return result;
     }
 
@@ -637,18 +618,18 @@ static RESULT load_config(nonnull_charp config_name, struct options *opts) {
    either when execv() is called or when the process exits. */
 int main(int argc, char *argv[]) {
     if (geteuid() == 0) {
-        fprintf(stderr, "This program should not be run as root. Exiting.\n");
+        fmt::fprintf(stderr, "This program should not be run as root. Exiting.\n");
         return 1;
     }
 
     /* Setup global directories first */
-    if (!(g_yawl_dir = setup_prog_dir())) {
-        fprintf(stderr, "The program directory is unusable\n");
+    if (FAILED(config::setup_prog_dir())) {
+        fmt::fprintf(stderr, "The program directory is unusable\n");
         return 1;
     }
 
-    if (!(g_config_dir = setup_config_dir())) {
-        fprintf(stderr, "The configuration directory is unusable\n");
+    if (FAILED(config::setup_config_dir())) {
+        fmt::fprintf(stderr, "The configuration directory is unusable\n");
         return 1;
     }
 
@@ -656,15 +637,16 @@ int main(int argc, char *argv[]) {
 
     result = log_init();
     if (FAILED(result) && (RESULT_CODE(result) != E_CANCELED))
-        fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
+        fmt::fprintf(stderr, "Warning: Failed to initialize logging to file: %s\n", result_to_string(result));
 
-    LOG_DEBUG(PROG_NAME " directories initialized - g_yawl_dir: %s, g_config_dir: %s", g_yawl_dir, g_config_dir);
+    LOG_DEBUG(PROG_NAME " directories initialized - yawl_dir: %s, config_dir: %s", config::yawl_dir,
+              config::config_dir);
 
     struct options opts = {};
     opts.exec_path = strdup(DEFAULT_EXEC_PATH);
 
     result = parse_env_options(&opts);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to parse options");
+    LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Failed to parse options");
 
     if (opts.help) {
         print_usage();
@@ -678,7 +660,7 @@ int main(int argc, char *argv[]) {
 
         RESULT update_result = handle_updates(opts.check, opts.update);
         if (FAILED(update_result)) {
-            LOG_RESULT(LOG_WARNING, update_result, "Update unsuccessful");
+            LOG_RESULT(Level::Warning, update_result, "Update unsuccessful");
             LOG_DEBUG_RESULT(update_result, "May have hit rate limit");
         } else if (RESULT_CODE(update_result) == E_UPDATE_PERFORMED) {
             LOG_INFO("Update installed.");
@@ -696,19 +678,20 @@ int main(int argc, char *argv[]) {
     }
 
     if (opts.version) {
-        printf(VERSION "\n");
+        fmt::printf(VERSION "\n");
         return 0;
     }
 
     /* Handle make_wrapper option */
     if (opts.make_wrapper) {
         LOG_DEBUG("Making wrapper %s", opts.make_wrapper);
-        if (opts.exec_path && STRING_EQUALS(opts.exec_path, DEFAULT_EXEC_PATH)) {
-            LOG_WARNING("You need to pass an exec= verb to create a wrapper. Use YAWL_VERBS=\"help\" for examples.");
+        if ((!opts.exec_path || STRING_EQUALS(opts.exec_path, DEFAULT_EXEC_PATH)) && !opts.proton) {
+            LOG_WARNING(
+                "You need to pass an exec= or proton= verb to create a wrapper. Use YAWL_VERBS=\"help\" for examples.");
             return 0;
         }
         result = create_wrapper(opts.make_wrapper, &opts);
-        LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed to create wrapper configuration");
+        LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Failed to create wrapper configuration");
 
         /* Exit after creating the wrapper if no other arguments */
         if (argc <= 1) {
@@ -725,13 +708,44 @@ int main(int argc, char *argv[]) {
             LOG_WARNING("Failed to load configuration. Continuing with defaults.");
     }
 
+    if (opts.proton) {
+        char *proton_path = strdup(opts.proton);
+        opts.exec_path = proton_path;
+
+        /* Set Steam compatibility variables (allow existing env to override) */
+        setenv_if_unset("STEAM_COMPAT_CLIENT_INSTALL_PATH", proton_path);
+        setenv_if_unset("STEAM_COMPAT_SESSION_ID", "yawl-default");
+        setenv_if_unset("STEAM_COMPAT_APP_ID", "yawl-default");
+        setenv_if_unset("UMU_ID", "yawl-default"); /* For compatibility with Proton */
+
+        /* Create default compat data path if none specified */
+        const char *wineprefix = getenv("WINEPREFIX");
+        if (wineprefix) {
+            /* Make sure Wineprefix exists beforehand */
+            ensure_dir(wineprefix);
+            setenv("STEAM_COMPAT_DATA_PATH", wineprefix, 1);
+        } else {
+            /* Look for appid and if not default, create an apposite [sic] prefix */
+            char *appid = getenv("STEAM_COMPAT_APP_ID");
+            char *prefix_path = nullptr;
+
+            if (!STRING_EQUALS(appid, "yawl-default"))
+                join_paths(prefix_path, config::yawl_dir, "prefixes", appid);
+            else
+                join_paths(prefix_path, config::yawl_dir, "prefixes", "yawl-default");
+
+            ensure_dir(prefix_path);
+            setenv("STEAM_COMPAT_DATA_PATH", prefix_path, 1);
+        }
+    }
+
     if (opts.enterpid) {
         do_nsenter(argc, argv, opts.enterpid);
         return 1;
     }
 
     result = setup_runtime(&opts);
-    LOG_AND_RETURN_IF_FAILED(LOG_ERROR, result, "Failed setting up the runtime");
+    LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Failed setting up the runtime");
 
     if (!is_exec_file(opts.exec_path)) {
         LOG_ERROR("Executable not found or not executable: %s", opts.exec_path);
@@ -739,20 +753,27 @@ int main(int argc, char *argv[]) {
     }
 
     char *entry_point = nullptr;
-    join_paths(entry_point, g_yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
     if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
         return 1;
     }
 
-    char **new_argv = (char **)calloc(argc + 4, sizeof(char *));
+    int extra_args = opts.proton ? 5 : 4;
+    char **new_argv = (char **)calloc(argc + extra_args, sizeof(char *));
     new_argv[0] = entry_point;
     new_argv[1] = (char *)"--verb=waitforexitandrun";
     new_argv[2] = (char *)"--";
     new_argv[3] = (char *)opts.exec_path;
 
+    int args_sum = 3;
+    if (opts.proton) {
+        new_argv[4] = opts.proton_verb ? strdup(opts.proton_verb) : strdup("run");
+        args_sum++;
+    }
+
     for (int i = 1; i < argc; i++) {
-        new_argv[i + 3] = argv[i];
+        new_argv[i + args_sum] = argv[i];
     }
 
     /* Set up library paths based on the executable path */

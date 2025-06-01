@@ -15,15 +15,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "result.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "result.hpp"
 
 #define PROG_NAME "yawl"
 #define CONFIG_DIR "configs"
-
 #define BUFFER_SIZE 8192
 
 /* case sensitive */
@@ -93,12 +88,3 @@ static inline bool is_exec_file(const char *path) {
 
 /* Remove specified verbs from YAWL_VERBS environment variable */
 RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs);
-
-/* The global installation path, set at startup in main() */
-extern const char *g_yawl_dir;
-/* The global configuration path, set at startup in main() */
-extern const char *g_config_dir;
-
-#ifdef __cplusplus
-}
-#endif
