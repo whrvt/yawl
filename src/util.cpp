@@ -386,8 +386,7 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullptr);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    if (!broken_user_ssl_workaround)
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, !broken_user_ssl_workaround);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
 
     /* Copied from curl's `src/tool_operate.c`, use the embedded CA certificate data */
