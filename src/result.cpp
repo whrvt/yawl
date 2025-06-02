@@ -7,9 +7,9 @@
  * See the full license text in the repository LICENSE file.
  */
 
-#include <errno.h>
-#include <stdio.h>
-#include <string.h>
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
 
 #include "curl/curl.h"
 #include "result.hpp"
