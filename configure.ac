@@ -1,4 +1,4 @@
-AC_INIT([yawl], [0.7.1], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
+AC_INIT([yawl], [0.7.2], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_SRCDIR([src/yawl.cpp])
 AC_CONFIG_HEADERS([config.h])

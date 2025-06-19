@@ -4,7 +4,7 @@
 set -e
 
 ZIG_VERSION="0.15.0-dev.589+23c817548"
-MIMALLOC_VERSION="3.0.3"
+MIMALLOC_VERSION="3.1.5"
 LIBUNISTRING_VERSION="1.3"
 LIBIDN2_VERSION="2.3.7"
 PSL_VERSION="0.21.5"
@@ -13,7 +13,7 @@ XZ_VERSION="5.6.4"
 ZSTD_VERSION="1.5.7"
 OPENSSL_VERSION="3.5.0"
 ARES_VERSION="1.34.5"
-CURL_VERSION="8.14.0"
+CURL_VERSION="8.14.1"
 LIBFFI_VERSION="3.4.7"
 GDK_PIXBUF_VERSION="2.42.12"
 LIBNOTIFY_VERSION="0.8.4"
@@ -44,13 +44,19 @@ download_file() {
     local url="$1"
     local output="$2"
 
+    local ret="0"
     if command -v wget >/dev/null 2>&1; then
-        wget -q "$url" -O "$output"
+        wget -q "$url" -O "$output" || ret="$?"
     elif command -v curl >/dev/null 2>&1; then
-        curl -sSL "$url" -o "$output"
+        curl -sSL "$url" -o "$output" || ret="$?"
     else
         echo "Error: Neither wget nor curl found"
         return 1
+    fi
+
+    if [ "$ret" != "0" ]; then
+        echo "Couldn't download ${url}."
+        return $ret 
     fi
 }
 
@@ -60,6 +66,8 @@ case "$LIB" in
     zig)
         [ -d "zig" ] && rm -rf zig
         echo "Downloading zig-$ZIG_VERSION..."
+        # note: newer versions use this url format, but as of now, some linking bug prevents building glib, so stay on the current version
+        #download_file "https://ziglang.org/builds/zig-x86_64-linux-$ZIG_VERSION.tar.xz" "zig.tar.xz"
         download_file "https://ziglang.org/builds/zig-linux-x86_64-$ZIG_VERSION.tar.xz" "zig.tar.xz"
         tar -xf zig.tar.xz
         rm zig.tar.xz
