@@ -214,6 +214,7 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
     }
 
     /* Run pv-verify */
+#pragma message "FIXME: don't use system(3)"
     int cmd_ret = system(cmd);
 
     /* Restore directory */

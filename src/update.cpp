@@ -242,13 +242,13 @@ static RESULT copy_file(const char *source, const char *destination) {
 #ifndef HAVE_RENAMEAT2
 #include <syscall.h>
 #if defined(HAVE_RENAMEAT) && defined(SYS_renameat2)
-static inline int renameat2(int oldfd, const char *oldname, int newfd, const char *newname, unsigned flags) {
+static inline long renameat2(int oldfd, const char *oldname, int newfd, const char *newname, unsigned flags) {
     if (!flags)
         return syscall(SYS_renameat, oldfd, oldname, newfd, newname);
     return syscall(SYS_renameat2, oldfd, oldname, newfd, newname, flags);
 }
 #else
-static inline int renameat2(int, const char *, int, const char *, unsigned) {
+static inline long renameat2(int, const char *, int, const char *, unsigned) {
     errno = ENOSYS;
     return -1;
 }
