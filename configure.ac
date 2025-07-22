@@ -298,9 +298,14 @@ fi
 
 # Download and build libarchive
 if ! test -f "$build_prefix/lib/libarchive.a"; then
+    # Download and build bzip2 (required for .bz2 support for libarchive)
+    if ! test -f "$deps_prefix/lib/libbz2.a"; then
+        AC_MSG_NOTICE([Building bzip2])
+        sh $am_aux_dir/download-deps.sh bzip2 "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build bzip2])
+    fi
     AC_MSG_NOTICE([Building libarchive])
     sh $am_aux_dir/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
-    cp $deps_prefix/lib/libarchive.a $build_prefix/lib/
+    cp $deps_prefix/lib/{libarchive.a,libbz2.a} $build_prefix/lib/
     cp $deps_prefix/include/archive* $build_prefix/include/
 fi
 
@@ -345,7 +350,6 @@ if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/lib
     cp $deps_prefix/lib/libgobject-2.0.a $build_prefix/lib/
     cp $deps_prefix/lib/libgmodule-2.0.a $build_prefix/lib/
     cp $deps_prefix/lib/libgio-2.0.a $build_prefix/lib/
-    cp $deps_prefix/lib/libgirepository-2.0.a $build_prefix/lib/
     cp $deps_prefix/lib/libgdk_pixbuf-2.0.a $build_prefix/lib/
     cp $deps_prefix/lib/libffi.a $build_prefix/lib/
     cp $deps_prefix/lib/libpcre2-8.a $build_prefix/lib/
@@ -392,7 +396,7 @@ LIBARCHIVE_CPPFLAGS="-DLIBARCHIVE_STATIC"
 
 NON_GLIB_CPPFLAGS="$LIBARCHIVE_CPPFLAGS $CURL_CPPFLAGS -I$build_prefix/include"
 
-COMMON_DEP_LIBS="-lcap -lidn2 -lpsl -lunistring -lz -llzma -lzstd"
+COMMON_DEP_LIBS="-lcap -lidn2 -lpsl -lunistring -lz -llzma -lzstd -lbz2"
 CURL_LIBS="-lcurl -lcares"
 LIBARCHIVE_LIBS="-larchive"
 OPENSSL_LIBS="-lssl -lcrypto"
@@ -412,7 +416,7 @@ JSON_GLIB_CPPFLAGS="-I$build_prefix/include/json-glib-1.0"
 
 ALL_GLIB_CPPFLAGS="$GDK_PIXBUF_CPPFLAGS $JSON_GLIB_CPPFLAGS $GLIB_CPPFLAGS"
 
-GLIB_LIBS="-lgmodule-2.0 -lgio-2.0 -lgirepository-2.0 -lgobject-2.0 -lglib-2.0 -lpcre2-8 -lffi -lm"
+GLIB_LIBS="-lgmodule-2.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0 -lpcre2-8 -lffi -lm"
 GDK_PIXBUF_LIBS="-lgdk_pixbuf-2.0"
 LIBNOTIFY_LIBS="-lnotify"
 JSON_GLIB_LIBS="-ljson-glib-1.0"
