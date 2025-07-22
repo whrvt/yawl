@@ -1,0 +1,58 @@
+CompileFlags:
+    BuiltinHeaders: QueryDriver
+    CompilationDatabase: build
+
+Diagnostics:
+  ClangTidy:
+    Add: ['*']
+    Remove: [
+    'abseil-*',
+    'altera-*',
+    'android-*',
+    'fuchsia-*',
+    'google-*',
+    'llvm*',
+    'cert-err52-cpp',
+    '*readability*',
+    'cppcoreguidelines-pro-type-vararg',
+    'hicpp-explicit-conversions',
+    'cppcoreguidelines-pro-type-static-cast-downcast',
+    'cppcoreguidelines-pro-type-reinterpret-cast',
+    'hicpp-uppercase-literal-suffix',
+    'boost-use-ranges',
+    'hicpp-vararg',
+    'hicpp-braces-around-statements',
+    'hicpp-signed-bitwise',
+    'modernize-use-trailing-return-type',
+    'cppcoreguidelines-prefer-member-initializer',
+    'zircon-*',
+    'misc-no-recursion',
+    'cppcoreguidelines-owning-memory',
+    'cert-err33-c',
+    'hicpp-avoid-c-arrays',
+    'cppcoreguidelines-avoid-non-const-global-variables',
+    'cppcoreguidelines-pro-type-union-access',
+    'cppcoreguidelines-avoid-do-while',
+    'concurrency-mt-unsafe',
+    'hicpp-no-malloc',
+    'hicpp-use-override',
+    'modernize-use-std-print',
+    'cppcoreguidelines-no-malloc',
+    'modernize-redundant-void-arg',
+    'cppcoreguidelines-pro-bounds-pointer-arithmetic',
+    'cppcoreguidelines-non-private-member-variables-in-classes',
+    'misc-non-private-member-variables-in-classes',
+    'bugprone-assignment-in-if*',
+    'bugprone-reserved*',
+    'bugprone-easily-swappable*',
+    'modernize*trailing*',
+    'modernize-use-nullptr',
+    'modernize-use-using',
+    'cppcoreguidelines-avoid-magic-numbers',
+    'cppcoreguidelines-macro-usage',
+    'cppcoreguidelines-pro-bounds-constant-array-index',
+    'misc-use-anonymous-namespace']
+    FastCheckFilter: Loose
+
+InlayHints:
+    Enabled: No
