@@ -10,7 +10,6 @@
 #include "config.h"
 
 #include <cassert>
-#include <memory>
 
 #include "yawlconfig.hpp"
 #include "util.hpp"
@@ -33,9 +32,8 @@ const fmt::string_view RUNTIME_BASE_URL =
 const fmt::string_view DEFAULT_EXEC_PATH = "/usr/bin/wine";
 const fmt::string_view CONFIG_EXTENSION = ".cfg";
 
-static std::unique_ptr<std::string> s_yawl_dir = nullptr;
-static std::unique_ptr<std::string> s_config_dir = nullptr;
-
+static std::string s_yawl_dir;
+static std::string s_config_dir;
 const char *yawl_dir = nullptr;
 const char *config_dir = nullptr;
 
@@ -59,11 +57,11 @@ RESULT setup_prog_dir(void) {
         return RESULT_FAIL;
     }
 
-    s_yawl_dir = std::make_unique<std::string>(result);
-    if (s_yawl_dir->empty())
+    if (result.empty())
         return RESULT_FAIL;
 
-    yawl_dir = s_yawl_dir->c_str();
+    s_yawl_dir = std::move(result);
+    yawl_dir = s_yawl_dir.c_str();
 
     return RESULT_OK;
 }
@@ -80,11 +78,11 @@ RESULT setup_config_dir(void) {
         return RESULT_FAIL;
     }
 
-    s_config_dir = std::make_unique<std::string>(result);
-    if (s_config_dir->empty())
+    if (result.empty())
         return RESULT_FAIL;
 
-    config_dir = s_config_dir->c_str();
+    s_config_dir = std::move(result);
+    config_dir = s_config_dir.c_str();
 
     return RESULT_OK;
 }

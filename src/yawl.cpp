@@ -11,9 +11,9 @@
 
 #include <cassert>
 #include <cerrno>
-#include <getopt.h>
 #include <cstdio>
 #include <cstring>
+#include <getopt.h>
 #include <sys/prctl.h>
 
 #include "apparmor.hpp"
@@ -41,7 +41,7 @@ using namespace fmt::literals;
 #define DEFAULT_EXEC_PATH "/usr/bin/wine"
 #define CONFIG_EXTENSION ".cfg"
 
-static void print_usage() {
+static void __attribute__((__noreturn__)) print_usage() {
     fmt::print(R"_(Usage: {2} [args_for_executable...]
 Environment variables:
   YAWL_VERBS       Semicolon-separated list of verbs to control {0} behavior:
@@ -83,30 +83,24 @@ Environment variables:
                    - $YAWL_INSTALL_DIR/{0}.log
 )_"_cf,
                PROG_NAME, DEFAULT_EXEC_PATH, program_invocation_short_name);
+    exit(0);
 }
 
 struct options {
-    int version;              /* 1 = return a version string and exit */
-    int verify;               /* 0 = no verification (default), 1 = verify */
-    int reinstall;            /* 0 = don't reinstall unless needed, 1 = force reinstall */
-    int help;                 /* 0 = don't show help, 1 = show help and exit */
-    int check;                /* 1 = check for updates */
-    int update;               /* 1 = check for and apply updates */
-    unsigned long enterpid;   /* The pid of the namespace we want to run a command in */
     const char *exec_path;    /* Path to the executable to run (default: /usr/bin/wine) */
     const char *make_wrapper; /* Name of the wrapper to create (nullptr = don't create) */
     const char *config;       /* Name of the config to use (nullptr = use argv[0] or default) */
     const char *wineserver;   /* Path to the wineserver binary (nullptr = don't create wineserver wrapper) */
     const char *proton;       /* Path to the proton script */
     const char *proton_verb;  /* Verb to use to run proton (default: run)*/
+    unsigned long enterpid;   /* The pid of the namespace we want to run a command in */
+    unsigned version : 1;     /* 1 = return a version string and exit */
+    unsigned verify : 1;      /* 0 = no verification (default), 1 = verify */
+    unsigned reinstall : 1;   /* 0 = don't reinstall unless needed, 1 = force reinstall */
+    unsigned help : 1;        /* 0 = don't show help, 1 = show help and exit */
+    unsigned check : 1;       /* 1 = check for updates */
+    unsigned update : 1;      /* 1 = check for and apply updates */
 };
-
-/* Shortcut to override already existing environmental variables */
-static void setenv_if_unset(const char *name, const char *value) {
-    if (!getenv(name)) {
-        setenv(name, value, 1);
-    }
-}
 
 /* Parse a single option string and update the options structure */
 static RESULT parse_option(nonnull_charp option, struct options *opts) {
@@ -147,7 +141,7 @@ static RESULT parse_option(nonnull_charp option, struct options *opts) {
 
     /* proton= takes precedence over exec= */
     if (opts->proton && opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH)) {
-        LOG_DEBUG("Ignoring exec, using proton instead.");
+        LOG_INFO("Ignoring exec, using proton instead.");
     }
 
     return RESULT_OK;
@@ -644,7 +638,7 @@ int main(int argc, char *argv[]) {
               config::config_dir);
 
     struct options opts = {};
-    opts.exec_path = strdup(DEFAULT_EXEC_PATH);
+    opts.exec_path = DEFAULT_EXEC_PATH;
 
     result = parse_env_options(&opts);
     LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Failed to parse options");
@@ -710,14 +704,13 @@ int main(int argc, char *argv[]) {
     }
 
     if (opts.proton) {
-        char *proton_path = strdup(opts.proton);
-        opts.exec_path = proton_path;
+        opts.exec_path = opts.proton;
 
         /* Set Steam compatibility variables (allow existing env to override) */
-        setenv_if_unset("STEAM_COMPAT_CLIENT_INSTALL_PATH", proton_path);
-        setenv_if_unset("STEAM_COMPAT_SESSION_ID", "yawl-default");
-        setenv_if_unset("STEAM_COMPAT_APP_ID", "yawl-default");
-        setenv_if_unset("UMU_ID", "yawl-default"); /* For compatibility with Proton */
+        setenv("STEAM_COMPAT_CLIENT_INSTALL_PATH", opts.exec_path, 0);
+        setenv("STEAM_COMPAT_SESSION_ID", PROG_NAME "-default", 0);
+        setenv("STEAM_COMPAT_APP_ID", PROG_NAME "-default", 0);
+        setenv("UMU_ID", PROG_NAME "-default", 0); /* For compatibility with Proton */
 
         /* Create default compat data path if none specified */
         const char *wineprefix = getenv("WINEPREFIX");
@@ -726,14 +719,14 @@ int main(int argc, char *argv[]) {
             ensure_dir(wineprefix);
             setenv("STEAM_COMPAT_DATA_PATH", wineprefix, 1);
         } else {
-            /* Look for appid and if not default, create an apposite [sic] prefix */
+            /* Look for appid and if not default, create the corresponding prefix for it */
             char *appid = getenv("STEAM_COMPAT_APP_ID");
             char *prefix_path = nullptr;
 
-            if (!STRING_EQUALS(appid, "yawl-default"))
+            if (!STRING_EQUALS(appid, PROG_NAME "-default"))
                 join_paths(prefix_path, config::yawl_dir, "prefixes", appid);
             else
-                join_paths(prefix_path, config::yawl_dir, "prefixes", "yawl-default");
+                join_paths(prefix_path, config::yawl_dir, "prefixes", PROG_NAME "-default");
 
             ensure_dir(prefix_path);
             setenv("STEAM_COMPAT_DATA_PATH", prefix_path, 1);
@@ -742,6 +735,7 @@ int main(int argc, char *argv[]) {
 
     if (opts.enterpid) {
         do_nsenter(argc, argv, opts.enterpid);
+        /* Should not reach here if do_nsenter succeeded */
         return 1;
     }
 
@@ -769,7 +763,10 @@ int main(int argc, char *argv[]) {
 
     int args_sum = 3;
     if (opts.proton) {
-        new_argv[4] = opts.proton_verb ? strdup(opts.proton_verb) : strdup("run");
+        if (opts.proton_verb)
+            new_argv[4] = (char *)opts.proton_verb;
+        else
+            new_argv[4] = (char *)"run";
         args_sum++;
     }
 
@@ -815,6 +812,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    /* TODO: this doesn't do anything, because we execv immediately after
+     * need to implement "daemon mode" for this to be effective */
     if (prctl(PR_SET_CHILD_SUBREAPER, 1UL) == -1)
         LOG_WARNING("Failed to set child subreaper status: %s", strerror(errno));
 
