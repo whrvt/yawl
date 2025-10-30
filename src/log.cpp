@@ -174,8 +174,8 @@ void _log_message(Level level, const char *file, int line, const char *format, .
     if (terminal_output) {
         FILE *output = (level <= Level::Warning) ? stderr : stdout;
 
-        fmt::fprintf(output, "%s[%s]%s ", level_colors[static_cast<size_t>(level)],
-                     level_strings[static_cast<size_t>(level)], COLOR_RESET);
+        fmt::fprintf(output, "%s[%s]%s ", level_colors[(size_t)(level)],
+                     level_strings[(size_t)(level)], COLOR_RESET);
 
         va_start(args, format);
         vfprintf(output, format, args);
@@ -200,7 +200,7 @@ void _log_message(Level level, const char *file, int line, const char *format, .
         else
             filename = file;
 
-        fmt::fprintf(log_file, "[%s] %s %s:%d: ", level_strings[static_cast<size_t>(level)], timestamp, filename, line);
+        fmt::fprintf(log_file, "[%s] %s %s:%d: ", level_strings[(size_t)(level)], timestamp, filename, line);
 
         va_start(args, format);
         vfprintf(log_file, format, args);
@@ -253,8 +253,8 @@ void log_progress(const char *operation, double percentage, int bytes_done, int 
     int bar_width = 30;
     int filled_width = (int)((percentage / 100.0) * bar_width);
 
-    fmt::fprintf(stdout, "\r%s[%s]%s ", level_colors[static_cast<size_t>(Level::Progress)],
-                 level_strings[static_cast<size_t>(Level::Progress)], COLOR_RESET);
+    fmt::fprintf(stdout, "\r%s[%s]%s ", level_colors[(size_t)(Level::Progress)],
+                 level_strings[(size_t)(Level::Progress)], COLOR_RESET);
     fmt::fprintf(stdout, "%-20.20s [", operation);
 
     for (int i = 0; i < bar_width; i++) {

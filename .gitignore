@@ -3,7 +3,6 @@
 *.la
 *.h.in*
 *.dirstamp
-.clangd
 .cache/
 confdefs.h
 .deps/
@@ -30,9 +29,7 @@ Makefile.in
 
 /assets/external/
 
-/deps/
-/deps-asan/
-/deps-clean/
+/deps*/
 
 pkgconfig/
 ossl-modules/

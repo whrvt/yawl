@@ -39,6 +39,7 @@ static RESULT test_container(const char *entry_point) {
     LOG_DEBUG("Testing container with command: %s", test_cmd);
 
     /* Run the test */
+#pragma message "FIXME: don't use system(3)"
     ret = system(test_cmd);
 
     /* Check stderr for AppArmor issues */
@@ -128,6 +129,7 @@ static RESULT install_apparmor_profile(void) {
 
     LOG_DEBUG("Running installation command: %s", install_cmd);
 
+#pragma message "FIXME: don't use system(3)"
     ret = system(install_cmd);
     if (ret != 0)
         result = MAKE_RESULT(SEV_ERROR, CAT_APPARMOR, E_ACCESS_DENIED);

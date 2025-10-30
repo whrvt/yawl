@@ -3,24 +3,25 @@
 
 set -e
 
-ZIG_VERSION="0.15.0-dev.589+23c817548"
-MIMALLOC_VERSION="3.0.3"
-LIBUNISTRING_VERSION="1.3"
-LIBIDN2_VERSION="2.3.7"
+ZIG_VERSION="0.16.0-dev.747+493ad58ff"
+MIMALLOC_VERSION="3.1.5"
+LIBUNISTRING_VERSION="1.4"
+LIBIDN2_VERSION="2.3.8"
 PSL_VERSION="0.21.5"
-LIBZ_VERSION="2.2.4"
-XZ_VERSION="5.6.4"
+LIBZ_VERSION="2.2.5"
+XZ_VERSION="5.8.1"
 ZSTD_VERSION="1.5.7"
 OPENSSL_VERSION="3.5.0"
 ARES_VERSION="1.34.5"
-CURL_VERSION="8.14.0"
+CURL_VERSION="8.16.0"
 LIBFFI_VERSION="3.4.7"
-GDK_PIXBUF_VERSION="2.42.12"
-LIBNOTIFY_VERSION="0.8.4"
+GDK_PIXBUF_VERSION="2.43.3" 
+LIBNOTIFY_VERSION="0.8.6"
 JSON_GLIB_VERSION="1.10.6"
-LIBARCHIVE_VERSION="3.7.7"
+BZIP2_VERSION="1.0.8"
+LIBARCHIVE_VERSION="3.8.2"
 LIBCAP_VERSION="2.27" # Newer versions have useless Go stuff
-FMT_VERSION="11.2.0"
+FMT_VERSION="12.0.0"
 
 CMAKE="${CMAKE:-cmake}"
 MESON="${MESON:-meson}"
@@ -44,13 +45,19 @@ download_file() {
     local url="$1"
     local output="$2"
 
+    local ret="0"
     if command -v wget >/dev/null 2>&1; then
-        wget -q "$url" -O "$output"
+        wget -q "$url" -O "$output" || ret="$?"
     elif command -v curl >/dev/null 2>&1; then
-        curl -sSL "$url" -o "$output"
+        curl -sSL "$url" -o "$output" || ret="$?"
     else
         echo "Error: Neither wget nor curl found"
         return 1
+    fi
+
+    if [ "$ret" != "0" ]; then
+        echo "Couldn't download ${url}."
+        return $ret 
     fi
 }
 
@@ -60,10 +67,10 @@ case "$LIB" in
     zig)
         [ -d "zig" ] && rm -rf zig
         echo "Downloading zig-$ZIG_VERSION..."
-        download_file "https://ziglang.org/builds/zig-linux-x86_64-$ZIG_VERSION.tar.xz" "zig.tar.xz"
+        download_file "https://ziglang.org/builds/zig-x86_64-linux-$ZIG_VERSION.tar.xz" "zig.tar.xz"
         tar -xf zig.tar.xz
         rm zig.tar.xz
-        mv zig-linux-x86_64-$ZIG_VERSION "zig/"
+        mv zig-x86_64-linux-$ZIG_VERSION "zig/"
         ;;
 
     mimalloc)
@@ -104,7 +111,7 @@ case "$LIB" in
     libunistring)
         if [ ! -d "libunistring-$LIBUNISTRING_VERSION" ]; then
             echo "Downloading libunistring-$LIBUNISTRING_VERSION..."
-            download_file "https://ftp.gnu.org/gnu/libunistring/libunistring-$LIBUNISTRING_VERSION.tar.xz" "libunistring.tar.xz"
+            download_file "https://mirrors.kernel.org/gnu/libunistring/libunistring-$LIBUNISTRING_VERSION.tar.xz" "libunistring.tar.xz"
             tar -xf libunistring.tar.xz
             rm libunistring.tar.xz
         fi
@@ -130,7 +137,8 @@ case "$LIB" in
     libidn2)
         if [ ! -d "libidn2-$LIBIDN2_VERSION" ]; then
             echo "Downloading libidn2-$LIBIDN2_VERSION..."
-            download_file "https://ftp.gnu.org/gnu/libidn/libidn2-$LIBIDN2_VERSION.tar.gz" "libidn2.tar.gz"
+            # ftp.gnu.org is down like half the time
+            download_file "https://web.archive.org/web/20250527221541/https://ftp.gnu.org/gnu/libidn/libidn2-$LIBIDN2_VERSION.tar.gz" "libidn2.tar.gz"
             tar -xzf libidn2.tar.gz
             rm libidn2.tar.gz
         fi
@@ -328,6 +336,40 @@ case "$LIB" in
         make install_sw || exit 1
         ;;
 
+    bzip2)
+        if [ ! -d "bzip2-$BZIP2_VERSION" ]; then
+            echo "Downloading bzip2-$BZIP2_VERSION..."
+            download_file "https://sourceware.org/pub/bzip2/bzip2-$BZIP2_VERSION.tar.gz" "bzip2.tar.gz"
+            tar -xzf bzip2.tar.gz
+            rm bzip2.tar.gz
+        fi
+
+        cd "bzip2-$BZIP2_VERSION"
+
+        make PREFIX="$PREFIX" \
+            CC="$CC" \
+            CXX="$CXX" \
+            CPPFLAGS="$CPPFLAGS" \
+            CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS" \
+            LDFLAGS="$LDFLAGS" \
+                libbz2.a
+        cp -f bzlib.h "$PREFIX"/include/ && \
+        cp -f libbz2.a "$PREFIX"/lib/
+        cat >"$PREFIX/lib/pkgconfig/bzip2.pc" <<__EOF__
+prefix=$PREFIX
+exec_prefix="\$"{prefix}
+libdir="\$"{exec_prefix}/lib
+includedir="\$"{prefix}/include
+
+Name: bzip2
+Description: A file compression library.
+Version: $BZIP2_VERSION
+Cflags: -I"\$"{includedir}
+Libs: -L"\$"{libdir} -lbz2
+__EOF__
+        ;;
+
     libarchive)
         if [ ! -d "libarchive-$LIBARCHIVE_VERSION" ]; then
             echo "Downloading libarchive-$LIBARCHIVE_VERSION..."
@@ -343,20 +385,25 @@ case "$LIB" in
         cp $cch . &&
         ./configure -C \
             --prefix="$PREFIX" \
-            --enable-bsdtar=static \
             --disable-shared \
             --enable-static \
             --disable-dependency-tracking \
-            --without-bz2lib \
             --without-libb2 \
             --without-iconv \
             --without-lz4 \
-            --with-zstd \
             --disable-acl \
             --disable-xattr \
             --without-xml2 \
             --without-expat \
+            --disable-tools \
+            --disable-tests \
+            --disable-bsdtar \
+            --disable-bsdcat \
+            --disable-bsdcpio \
+            --disable-bsdunzip  \
+            --with-zstd \
             --with-openssl \
+            --with-bz2lib \
             --with-lzma="$PREFIX" \
             --with-zlib="$PREFIX" \
             CC="$CC" \
@@ -496,13 +543,13 @@ case "$LIB" in
         cd "gdk-pixbuf-$GDK_PIXBUF_VERSION"
 
         # meson is absolutely UNREAL
-        sed -i 's|.*thumbnailer.*||g' meson.build
         rm -f "$PREFIX/lib/pkgconfig/{gthread*.pc,gobject*.pc,glib*.pc,gmodule-no-export*.pc,gmodule-export*.pc,gmodule*.pc,girepository*.pc,gio-unix*.pc,gio*.pc,gdk-pixbuf*.pc}"
         find "${PREFIX:?}"/ '(' -iregex ".*deps/prefix.*glib.*" -o -iregex ".*deps/prefix.*pcre.*" ')' -exec rm -rf '{''}' '+'
         FLAGS_MESON=("env"
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
             "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS -lm"
         )
+        sed -i -e 's|executable.*||g' gdk-pixbuf/pixops/meson.build # DO NOT WANT EXECUTABLE
         "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
@@ -512,9 +559,10 @@ case "$LIB" in
                             -Djpeg=disabled \
                             -Dgif=disabled \
                             -Dothers=disabled \
+                            -Dthumbnailer=disabled \
+                            -Dglycin=disabled \
                             -Dbuiltin_loaders=none \
-                            -Dgtk_doc=false \
-                            -Ddocs=false \
+                            -Ddocumentation=false \
                             -Dintrospection=disabled \
                             -Dman=false \
                             -Drelocatable=false \
@@ -556,7 +604,6 @@ case "$LIB" in
                             -Dglib:systemtap=disabled \
                             -Dglib:sysprof=disabled \
                             -Dglib:documentation=false \
-                            -Dglib:gtk_doc=false \
                             -Dglib:tests=false \
                             -Dglib:installed_tests=false \
                             -Dglib:nls=disabled \
@@ -567,9 +614,15 @@ case "$LIB" in
                             -Dglib:glib_checks=false \
                             -Dglib:libelf=disabled \
                             -Dglib:introspection=disabled build .
-        sed -i 's|.*atomic_dep = .*|atomic_dep = []|g' subprojects/glib/meson.build # this is the reason the build was failing without musl installed...?
+        rm -rf subprojects/glib/girepository # DO NOT WANT
+        rm -rf subprojects/glib/fuzzing # DO NOT WANT
+        sed -i -e 's|.*atomic_dep = .*|atomic_dep = []|g' \
+            -e 's|girepoinc.*||g' \
+            -e 's|subdir.*girepository.*||g' \
+            -e 's|subdir.*fuzz.*||g' \
+                subprojects/glib/meson.build
         "${FLAGS_MESON[@]}" $MESON compile -C build
-        "${FLAGS_MESON[@]}" $MESON install -C build || true # WTF?
+        "${FLAGS_MESON[@]}" $MESON install -C build --no-rebuild --tags devel || true # WTF?
 
         # PISS OFF
         find "$PWD"/ -iregex ".*meson-private.*\.pc" -execdir cp '{''}' "$PREFIX/lib/pkgconfig" ';'
@@ -632,7 +685,6 @@ case "$LIB" in
                             --buildtype=minsize \
                             -Dintrospection=disabled \
                             -Ddocumentation=disabled \
-                            -Dgtk_doc=disabled \
                             -Dman=false \
                             -Dtests=false \
                             -Dconformance=false \
