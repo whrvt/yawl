@@ -3,25 +3,25 @@
 
 set -e
 
-ZIG_VERSION="0.15.0-dev.1593+399bace2f"
+ZIG_VERSION="0.16.0-dev.747+493ad58ff"
 MIMALLOC_VERSION="3.1.5"
-LIBUNISTRING_VERSION="1.3"
-LIBIDN2_VERSION="2.3.7"
+LIBUNISTRING_VERSION="1.4"
+LIBIDN2_VERSION="2.3.8"
 PSL_VERSION="0.21.5"
 LIBZ_VERSION="2.2.5"
 XZ_VERSION="5.8.1"
 ZSTD_VERSION="1.5.7"
 OPENSSL_VERSION="3.5.0"
 ARES_VERSION="1.34.5"
-CURL_VERSION="8.15.0"
+CURL_VERSION="8.16.0"
 LIBFFI_VERSION="3.4.7"
 GDK_PIXBUF_VERSION="2.43.3" 
 LIBNOTIFY_VERSION="0.8.6"
 JSON_GLIB_VERSION="1.10.6"
 BZIP2_VERSION="1.0.8"
-LIBARCHIVE_VERSION="3.8.1"
+LIBARCHIVE_VERSION="3.8.2"
 LIBCAP_VERSION="2.27" # Newer versions have useless Go stuff
-FMT_VERSION="11.2.0"
+FMT_VERSION="12.0.0"
 
 CMAKE="${CMAKE:-cmake}"
 MESON="${MESON:-meson}"
@@ -111,7 +111,7 @@ case "$LIB" in
     libunistring)
         if [ ! -d "libunistring-$LIBUNISTRING_VERSION" ]; then
             echo "Downloading libunistring-$LIBUNISTRING_VERSION..."
-            download_file "https://ftp.gnu.org/gnu/libunistring/libunistring-$LIBUNISTRING_VERSION.tar.xz" "libunistring.tar.xz"
+            download_file "https://mirrors.kernel.org/gnu/libunistring/libunistring-$LIBUNISTRING_VERSION.tar.xz" "libunistring.tar.xz"
             tar -xf libunistring.tar.xz
             rm libunistring.tar.xz
         fi
@@ -137,7 +137,8 @@ case "$LIB" in
     libidn2)
         if [ ! -d "libidn2-$LIBIDN2_VERSION" ]; then
             echo "Downloading libidn2-$LIBIDN2_VERSION..."
-            download_file "https://ftp.gnu.org/gnu/libidn/libidn2-$LIBIDN2_VERSION.tar.gz" "libidn2.tar.gz"
+            # ftp.gnu.org is down like half the time
+            download_file "https://web.archive.org/web/20250527221541/https://ftp.gnu.org/gnu/libidn/libidn2-$LIBIDN2_VERSION.tar.gz" "libidn2.tar.gz"
             tar -xzf libidn2.tar.gz
             rm libidn2.tar.gz
         fi
