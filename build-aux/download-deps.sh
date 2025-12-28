@@ -531,6 +531,10 @@ __EOF__
             --enable-http \
             --with-openssl \
             --enable-ares \
+            --with-ca-path=/etc/ssl/certs \
+            --without-ca-fallback \
+            --without-ca-embed \
+            --with-ca-bundle=/etc/ssl/certs/ca-certificates.crt \
             CC="$CC" \
             CPPFLAGS="$CPPFLAGS" \
             CFLAGS="$CFLAGS" \

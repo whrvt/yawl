@@ -202,7 +202,7 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
     }
 
     const char *argv[] = {pv_verify_path, "--quiet", nullptr};
-    int cmd_ret = execute_program(argv, runtime_path);
+    int cmd_ret = execute_program(argv, runtime_path, nullptr, nullptr);
 
     if (cmd_ret != 0) {
         LOG_ERROR("pv-verify reported verification errors (exit code %d).", cmd_ret);

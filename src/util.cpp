@@ -271,7 +271,7 @@ RESULT calculate_sha256(const char *file_path, char hash_str[65]) {
     EVP_MD_CTX_free(mdctx);
 
     /* Convert to hex string */
-    for (unsigned int i = 0; i < hash_len; i++)
+    for (size_t i = 0; i < hash_len; i++)
         snprintf(hash_str + (i * 2), 3, "%02x", hash[i]);
 
     hash_str[64] = '\0';
@@ -444,17 +444,24 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
         {
             // clang-format on
             broken_user_certificate_workaround = 1;
-            LOG_ERROR(
+            LOG_WARNING(
                 "Your system's CA root certificate store is either missing or misconfigured. CURL error %u:\n\t%s", res,
                 curl_easy_strerror(res));
-            LOG_ERROR("Trying to download %s again with the bundled certificates...", url);
+            LOG_WARNING("Trying to download %s again with the bundled certificates...", url);
             return download_file(url, output_path, headers);
         }
         if (!broken_user_ssl_workaround && (res == CURLE_PEER_FAILED_VERIFICATION)) {
-            broken_user_ssl_workaround = 1;
-            LOG_ERROR("SSL peer verification failed. Fix your system's network configuration, but trying to download "
-                      "%s again without it...",
-                      url);
+            if (!broken_user_certificate_workaround) {
+                /* First, try using the bundled certificates before disabling peer verification entirely.
+                 * Don't log anything yet. */
+                broken_user_certificate_workaround = 1;
+            } else {
+                broken_user_ssl_workaround = 1;
+                LOG_ERROR(
+                    "SSL peer verification failed. Fix your system's network configuration, but trying to download "
+                    "%s again without it...",
+                    url);
+            }
             return download_file(url, output_path, headers);
         }
         return MAKE_RESULT(SEV_ERROR, CAT_NETWORK, res);

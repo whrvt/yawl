@@ -9,9 +9,9 @@
 
 #pragma once
 
+#include <cstdlib>
 #include <dirent.h>
 #include <pwd.h>
-#include <cstdlib>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -92,8 +92,8 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
  * stdout_path: optional file to redirect stdout to (nullptr = inherit)
  * stderr_path: optional file to redirect stderr to (nullptr = inherit)
  * Returns: exit status of the program, or -1 on fork/exec failure */
-int execute_program(const char *const argv[], const char *working_dir = nullptr,
-                    const char *stdout_path = nullptr, const char *stderr_path = nullptr);
+int execute_program(const char *const argv[], const char *working_dir, const char *stdout_path,
+                    const char *stderr_path);
 
 /* Is the file a real executable file? */
 static inline bool is_exec_file(const char *path) {
