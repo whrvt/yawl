@@ -182,9 +182,9 @@ EOF
 
 export PKG_CONFIG="$build_prefix"/pkg-config
 AC_SUBST([PKG_CONFIG])
-export PKG_CONFIG_PATH="$deps_prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="$deps_prefix/lib/pkgconfig:$deps_prefix/lib64/pkgconfig"
 AC_SUBST([PKG_CONFIG_PATH])
-export PKG_CONFIG_LIBDIR="$deps_prefix/lib:$PKG_CONFIG_LIBDIR"
+export PKG_CONFIG_LIBDIR="$PKG_CONFIG_PATH"
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
 AC_DEFUN([AC_PROG_PERL], [
