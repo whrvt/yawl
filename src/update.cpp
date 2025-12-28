@@ -85,7 +85,7 @@ static RESULT parse_release_info(const char *json_path, char *tag_name[], char *
 
     /* Format the download URL */
     if (*tag_name) {
-        /* NOTE: x86_64 binaries are uploaded as just "yawl", aarch64 as "yawl-aarch64".
+        /* NOTE: x86_64 binaries are uploaded as just "yawl", aarch64 as "yawl_aarch64".
          *       This is just for backwards compatibility. */
         join_paths(*download_url, GITHUB_RELEASES_PAGE_URL, *tag_name, PROG_NAME_ARCH);
     }

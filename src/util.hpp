@@ -21,7 +21,7 @@
 #define PROG_NAME "yawl"
 
 #ifdef YAWL_ARCH_AARCH64
-#define PROG_NAME_ARCH PROG_NAME "-aarch64"
+#define PROG_NAME_ARCH PROG_NAME "_aarch64"
 #else
 #define PROG_NAME_ARCH PROG_NAME
 #endif

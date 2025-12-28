@@ -126,7 +126,7 @@ jobs:
       shell: bash
       run: |
         git fetch origin +refs/tags/*:refs/tags/*
-        mv artifacts/aarch64/yawl artifacts/aarch64/yawl-aarch64
+        mv artifacts/aarch64/yawl artifacts/aarch64/yawl_aarch64
     - name: Create
       id: create
       shell: bash
@@ -151,5 +151,5 @@ jobs:
         release upload
         ${{ github.ref_name }}
         artifacts/x86_64/yawl
-        artifacts/aarch64/yawl-aarch64
+        artifacts/aarch64/yawl_aarch64
         --clobber

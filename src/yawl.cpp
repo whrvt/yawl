@@ -208,7 +208,10 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
         LOG_ERROR("pv-verify reported verification errors (exit code %d).", cmd_ret);
         /* checking verify.c, it can only return EX_USAGE (64), 1 (failure), or 0 (success)
          * so treat any other error as E_UNKNOWN */
-        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, cmd_ret == 64 ? E_INVALID_ARG : cmd_ret == 1 ? E_ACCESS_DENIED : E_UNKNOWN);
+        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME,
+                           cmd_ret == 64  ? E_INVALID_ARG
+                           : cmd_ret == 1 ? E_ACCESS_DENIED
+                                          : E_UNKNOWN);
     }
 
     autofree char *entry_point = nullptr;
@@ -557,7 +560,8 @@ static inline const char *get_config_name(const struct options *opts) {
     }
 
     const char *temp = strchr(program_invocation_short_name, '-');
-    if (temp)
+    /* Whoops, originally I uploaded aarch64 releases as yawl-aarch64, which breaks this check... */
+    if (temp && (temp + 1) && !STRING_EQUALS(temp + 1, "aarch64"))
         wrapper_name = temp + 1;
 
     return wrapper_name;
