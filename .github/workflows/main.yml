@@ -51,11 +51,14 @@ jobs:
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
 
   build:
-    name: Build
+    name: Build (${{ matrix.arch }})
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
     needs: version
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
     steps:
     - uses: actions/checkout@v4
       with:
@@ -66,36 +69,39 @@ jobs:
       run: |
         pacman -Syu --noconfirm
         pacman -S --noconfirm cmake python musl meson git ccache
-        mkdir ${{ env.CCACHE_DIR }}
+        mkdir -p ${{ env.CCACHE_DIR }}
     - name: ccache
       uses: actions/cache@v4
       with:
         path: |
           ${{ env.CCACHE_DIR }}
-        key: ccache-${{ github.workflow }}-${{ github.run_id }}
+        key: ccache-${{ github.workflow }}-${{ matrix.arch }}-${{ github.run_id }}
         restore-keys: |
-          ccache-${{ github.workflow }}-
+          ccache-${{ github.workflow }}-${{ matrix.arch }}-
     - name: Cache build-time dependencies
       uses: actions/cache@v4
       with:
         path: |
-          ./deps/yawl
-        key: deps-${{ github.workflow }}-${{ hashFiles('build-aux/*', 'configure.ac') }}
+          ./deps-${{ matrix.arch }}/yawl
+        key: deps-${{ matrix.arch }}-${{ github.workflow }}-${{ hashFiles('build-aux/*', 'configure.ac') }}
         restore-keys: |
-          deps-${{ github.workflow }}-${{ hashFiles('build-aux/*', 'configure.ac') }}
+          deps-${{ matrix.arch }}-${{ github.workflow }}-${{ hashFiles('build-aux/*', 'configure.ac') }}
     - name: Configure
       shell: bash
       run: |
         ./autogen.sh
-        ./configure
+        mkdir -p build-${{ matrix.arch }}
+        cd build-${{ matrix.arch }}
+        ../configure --host=${{ matrix.arch }}-pc-linux-musl
     - name: Build
       shell: bash
       run: |
+        cd build-${{ matrix.arch }}
         make
     - uses: actions/upload-artifact@v4
       with:
-        path: yawl
-        name: yawl-${{ needs.version.outputs.full_desc }}
+        path: build-${{ matrix.arch }}/yawl
+        name: yawl-${{ matrix.arch }}-${{ needs.version.outputs.full_desc }}
 
   release:
     if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
@@ -109,13 +115,18 @@ jobs:
         fetch-tags: true
     - uses: actions/download-artifact@v4
       with:
-        name: yawl-${{ needs.version.outputs.full_desc }}
-        path: yawl-${{ needs.version.outputs.full_desc }}
+        name: yawl-x86_64-${{ needs.version.outputs.full_desc }}
+        path: artifacts/x86_64
+    - uses: actions/download-artifact@v4
+      with:
+        name: yawl-aarch64-${{ needs.version.outputs.full_desc }}
+        path: artifacts/aarch64
     - name: Prepare
       id: prepare
       shell: bash
       run: |
         git fetch origin +refs/tags/*:refs/tags/*
+        mv artifacts/aarch64/yawl artifacts/aarch64/yawl-aarch64
     - name: Create
       id: create
       shell: bash
@@ -139,5 +150,6 @@ jobs:
         --repo "${{ github.server_url }}/${{ github.repository }}"
         release upload
         ${{ github.ref_name }}
-        yawl-${{ needs.version.outputs.full_desc }}/yawl
+        artifacts/x86_64/yawl
+        artifacts/aarch64/yawl-aarch64
         --clobber

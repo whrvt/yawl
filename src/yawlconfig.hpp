@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "config.h"
 #include "result.hpp"
 
 namespace config {

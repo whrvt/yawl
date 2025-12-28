@@ -3,25 +3,25 @@
 
 set -e
 
-ZIG_VERSION="0.16.0-dev.747+493ad58ff"
+ZIG_VERSION="0.16.0-dev.1657+985a3565c"
 MIMALLOC_VERSION="3.1.5"
 LIBUNISTRING_VERSION="1.4"
 LIBIDN2_VERSION="2.3.8"
 PSL_VERSION="0.21.5"
-LIBZ_VERSION="2.2.5"
-XZ_VERSION="5.8.1"
+LIBZ_VERSION="2.3.2"
+XZ_VERSION="5.8.2"
 ZSTD_VERSION="1.5.7"
-OPENSSL_VERSION="3.5.0"
-ARES_VERSION="1.34.5"
-CURL_VERSION="8.16.0"
+OPENSSL_VERSION="3.6.0"
+ARES_VERSION="1.34.6"
+CURL_VERSION="8.17.0"
 LIBFFI_VERSION="3.4.7"
 GDK_PIXBUF_VERSION="2.43.3" 
 LIBNOTIFY_VERSION="0.8.6"
 JSON_GLIB_VERSION="1.10.6"
 BZIP2_VERSION="1.0.8"
-LIBARCHIVE_VERSION="3.8.2"
+LIBARCHIVE_VERSION="3.8.4"
 LIBCAP_VERSION="2.27" # Newer versions have useless Go stuff
-FMT_VERSION="12.0.0"
+FMT_VERSION="12.1.0"
 
 CMAKE="${CMAKE:-cmake}"
 MESON="${MESON:-meson}"
@@ -32,11 +32,16 @@ USING_MUSL="${USING_MUSL:-ON}"
 LIB="$1"
 BUILDDIR="$2"
 PREFIX="$3"
+host_cpu="${4:-"x86_64"}"
+host="${host_cpu}-pc-linux-"
+if [ "$USING_MUSL" = "ON" ]; then host="${host}musl"; else host="${host}gnu"; fi
 
 if [ -z "$LIB" ] || [ -z "$BUILDDIR" ] || [ -z "$PREFIX" ]; then
-    echo "Usage: $0 <library> <build-dir> <prefix>"
+    echo "Usage: $0 <library> <build-dir> <prefix> [host_cpu]"
     exit 1
 fi
+
+printf 'LIB: %s BUILDDIR: %s PREFIX: %s host_cpu: %s host: %s\n' "$LIB" "$BUILDDIR" "$PREFIX" "$host_cpu" "$host"
 
 mkdir -p "$BUILDDIR" "$PREFIX"
 cd "$BUILDDIR"
@@ -62,6 +67,28 @@ download_file() {
 }
 
 JOBS=$(nproc)
+
+make_meson_cross_flag() {
+        cross_flag=()
+        if [ "$host_cpu" = "aarch64" ]; then
+        cross_flag=("--cross-file" "cross-aarch64")
+
+        cat >cross-aarch64 <<'EOF'
+[binaries]
+c = 'zigcc'
+cpp = 'zigcpp'
+ar = 'ar'
+strip = 'strip'
+ranlib = 'ranlib'
+
+[host_machine]
+system = 'linux'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+EOF
+        fi
+}
 
 case "$LIB" in
     zig)
@@ -95,6 +122,7 @@ case "$LIB" in
             -DCMAKE_CXX_COMPILER="$CXX" \
             -DCMAKE_CXX_FLAGS="$CXXFLAGS -xc++" \
             -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DCMAKE_SYSTEM_PROCESSOR="$host_cpu" \
             -DMI_OPT_ARCH=OFF \
             -DMI_USE_CXX=ON \
             -DMI_NO_OPT_ARCH=ON \
@@ -123,6 +151,7 @@ case "$LIB" in
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
+            --host="$host" \
             CC="$CC" \
             CXX="$CXX" \
             CPPFLAGS="$CPPFLAGS" \
@@ -138,7 +167,9 @@ case "$LIB" in
         if [ ! -d "libidn2-$LIBIDN2_VERSION" ]; then
             echo "Downloading libidn2-$LIBIDN2_VERSION..."
             # ftp.gnu.org is down like half the time
-            download_file "https://web.archive.org/web/20250527221541/https://ftp.gnu.org/gnu/libidn/libidn2-$LIBIDN2_VERSION.tar.gz" "libidn2.tar.gz"
+            download_file "https://ftp.gnu.org/gnu/libidn/libidn2-$LIBIDN2_VERSION.tar.gz" "libidn2.tar.gz" \
+                || download_file "https://web.archive.org/web/20250527221541/https://ftp.gnu.org/gnu/libidn/libidn2-$LIBIDN2_VERSION.tar.gz" "libidn2.tar.gz"
+
             tar -xzf libidn2.tar.gz
             rm libidn2.tar.gz
         fi
@@ -152,6 +183,7 @@ case "$LIB" in
             --enable-static \
             --with-included-unistring=no \
             --disable-nls \
+            --host="$host" \
             CC="$CC" \
             CXX="$CXX" \
             CPPFLAGS="$CPPFLAGS" \
@@ -178,6 +210,7 @@ case "$LIB" in
             --prefix="$PREFIX" \
             --disable-shared \
             --enable-static \
+            --host="$host" \
             CC="$CC" \
             CXX="$CXX" \
             CPPFLAGS="$CPPFLAGS" \
@@ -238,6 +271,7 @@ case "$LIB" in
             --disable-lzmainfo \
             --disable-scripts \
             --disable-doc \
+            --host="$host" \
             CC="$CC" \
             CXX="$CXX" \
             CPPFLAGS="$CPPFLAGS" \
@@ -296,6 +330,7 @@ case "$LIB" in
         CXXFLAGS="$CXXFLAGS -U_GNU_SOURCE" \
         LDFLAGS="$LDFLAGS" \
         ./config \
+            "linux-${host_cpu}" \
             --prefix="$PREFIX" \
             --openssldir="$PREFIX/ssl" \
             threads \
@@ -385,6 +420,7 @@ __EOF__
         cp $cch . &&
         ./configure -C \
             --prefix="$PREFIX" \
+            --host="$host" \
             --disable-shared \
             --enable-static \
             --disable-dependency-tracking \
@@ -430,6 +466,7 @@ __EOF__
         cp $cch . &&
         ./configure -C \
             --prefix="$PREFIX" \
+            --host="$host" \
             --disable-shared \
             --enable-static \
             --disable-tests \
@@ -460,6 +497,7 @@ __EOF__
         cp $cch . &&
         ./configure -C \
             --prefix="$PREFIX" \
+            --host="$host" \
             --disable-shared \
             --enable-static \
             --disable-ldap \
@@ -518,6 +556,7 @@ __EOF__
         cp $cch . &&
         ./configure -C \
             --prefix="$PREFIX" \
+            --host="$host" \
             --disable-shared \
             --enable-static \
             --enable-portable-binary \
@@ -542,6 +581,9 @@ __EOF__
 
         cd "gdk-pixbuf-$GDK_PIXBUF_VERSION"
 
+        # makes a cross file and sets the cross_flag variable if building for aarch64
+        make_meson_cross_flag
+
         # meson is absolutely UNREAL
         rm -f "$PREFIX/lib/pkgconfig/{gthread*.pc,gobject*.pc,glib*.pc,gmodule-no-export*.pc,gmodule-export*.pc,gmodule*.pc,girepository*.pc,gio-unix*.pc,gio*.pc,gdk-pixbuf*.pc}"
         find "${PREFIX:?}"/ '(' -iregex ".*deps/prefix.*glib.*" -o -iregex ".*deps/prefix.*pcre.*" ')' -exec rm -rf '{''}' '+'
@@ -549,8 +591,23 @@ __EOF__
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
             "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS -lm"
         )
+
+        # clone the glib subproject before meson will do it for us
+        if [ ! -d "subprojects/glib/.git" ]; then
+            git clone https://github.com/GNOME/glib subprojects/glib && git -C subprojects/glib checkout 56e7dcb8503b0c026580b260a5b0afdc40e22657
+        fi
+
+        rm -rf subprojects/glib/girepository # DO NOT WANT
+        rm -rf subprojects/glib/fuzzing # DO NOT WANT
+        sed -i -e 's|.*atomic_dep = .*|atomic_dep = []|g' \
+            -e 's|if cc.links(libatomic|if false and cc.links(libatomic|g' \
+            -e 's|girepoinc.*||g' \
+            -e 's|subdir.*girepository.*||g' \
+            -e 's|subdir.*fuzz.*||g' \
+                subprojects/glib/meson.build
+
         sed -i -e 's|executable.*||g' gdk-pixbuf/pixops/meson.build # DO NOT WANT EXECUTABLE
-        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" \
+        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" "${cross_flag[@]}" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
                             -Ddebug=false \
@@ -614,13 +671,7 @@ __EOF__
                             -Dglib:glib_checks=false \
                             -Dglib:libelf=disabled \
                             -Dglib:introspection=disabled build .
-        rm -rf subprojects/glib/girepository # DO NOT WANT
-        rm -rf subprojects/glib/fuzzing # DO NOT WANT
-        sed -i -e 's|.*atomic_dep = .*|atomic_dep = []|g' \
-            -e 's|girepoinc.*||g' \
-            -e 's|subdir.*girepository.*||g' \
-            -e 's|subdir.*fuzz.*||g' \
-                subprojects/glib/meson.build
+
         "${FLAGS_MESON[@]}" $MESON compile -C build
         "${FLAGS_MESON[@]}" $MESON install -C build --no-rebuild --tags devel || true # WTF?
 
@@ -641,6 +692,8 @@ __EOF__
 
         cd "libnotify-$LIBNOTIFY_VERSION"
 
+        make_meson_cross_flag
+
         sed -i 's|.*subdir.*tools.*||g' meson.build
         sed -i 's|libnotify_lib = shared|libnotify_lib = static|g' "$PWD/libnotify/meson.build"
         sed -i 's|.*LT_CURRENT.*||g' "$PWD/libnotify/meson.build"
@@ -648,7 +701,7 @@ __EOF__
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
             "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS"
         )
-        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" \
+        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" "${cross_flag[@]}" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
                             -Dtests=false \
@@ -676,11 +729,14 @@ __EOF__
         fi
 
         cd "json-glib-$JSON_GLIB_VERSION"
+
+        make_meson_cross_flag
+
         FLAGS_MESON=("env"
             "CC=$CC" "CXX=$CXX" "CPPFLAGS=$CPPFLAGS -I$PREFIX/include/json-glib-1.0 -I$PREFIX/include/gdk-pixbuf-2.0 -I$PREFIX/include/glib-2.0"
             "CFLAGS=$CFLAGS -fno-exceptions" "CXXFLAGS=$CXXFLAGS" "LDFLAGS=$LDFLAGS"
         )
-        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" \
+        "${FLAGS_MESON[@]}" $MESON setup --prefix="$PREFIX" "${cross_flag[@]}" \
                             --bindir "$PREFIX/lib" --includedir "$PREFIX/include" \
                             --buildtype=minsize \
                             -Dintrospection=disabled \
@@ -712,9 +768,15 @@ __EOF__
 
         cd "libcap-$LIBCAP_VERSION"
 
+        # Hacky... should use build cpu architecture compiler instead of just "gcc"
+        if [ "$host_cpu" = "aarch64" ]; then BUILDCC="gcc -fuse-ld=bfd"; else BUILDCC="$CC"; fi
+
         sed -i 's|-fPIC||g' Make.Rules
         sed -i 's|^CC :=|CC ?=|g' Make.Rules
         sed -i 's|CFLAGS := -O2 -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64|CFLAGS := $(CFLAGS) -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64|g' Make.Rules
+        sed -i 's|^BUILD_CC.*|BUILD_CC := '"$BUILDCC|g" Make.Rules
+        sed -i 's|^BUILD_CFLAGS :=.*|BUILD_CFLAGS := $(IPATH)|g' Make.Rules
+        sed -i 's|^BUILD_GPERF.*|BUILD_GPERF := no|g' Make.Rules
         sed -i 's|-Wl,-x -shared|-static|g' Make.Rules
         cat >Makefile <<'EOF'
 topdir=$(shell pwd)
@@ -755,6 +817,7 @@ EOF
         env CXX="$CXX" LD="$CXX" CFLAGS="$CFLAGS" \
             CXXFLAGS="$CXXFLAGS" LDFLAGS="$LDFLAGS" $CMAKE \
             -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DCMAKE_SYSTEM_PROCESSOR="$host_cpu" \
             -DFMT_PEDANTIC=OFF \
             -DFMT_WERROR=OFF \
             -DFMT_DOC=OFF \

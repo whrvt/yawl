@@ -15,9 +15,17 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "config.h"
 #include "result.hpp"
 
 #define PROG_NAME "yawl"
+
+#ifdef YAWL_ARCH_AARCH64
+#define PROG_NAME_ARCH PROG_NAME "-aarch64"
+#else
+#define PROG_NAME_ARCH PROG_NAME
+#endif
+
 #define CONFIG_DIR "configs"
 #define BUFFER_SIZE 8192
 
@@ -77,6 +85,15 @@ RESULT extract_archive(const char *archive_path, const char *extract_path);
  * headers: nullptr-terminated array of strings for HTTP headers (can be nullptr)
  */
 RESULT download_file(const char *url, const char *output_path, const char *headers[]);
+
+/* Execute a program directly without invoking the shell
+ * argv: null-terminated array of arguments (argv[0] is the program path)
+ * working_dir: optional directory to chdir to before exec (nullptr = don't change)
+ * stdout_path: optional file to redirect stdout to (nullptr = inherit)
+ * stderr_path: optional file to redirect stderr to (nullptr = inherit)
+ * Returns: exit status of the program, or -1 on fork/exec failure */
+int execute_program(const char *const argv[], const char *working_dir = nullptr,
+                    const char *stdout_path = nullptr, const char *stderr_path = nullptr);
 
 /* Is the file a real executable file? */
 static inline bool is_exec_file(const char *path) {

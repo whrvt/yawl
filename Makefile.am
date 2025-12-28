@@ -4,9 +4,9 @@ bin_PROGRAMS := yawl
 
 yawl_SOURCES := src/yawl.cpp src/util.cpp src/apparmor.cpp src/log.cpp src/result.cpp src/update.cpp src/nsenter.cpp src/yawlconfig.cpp
 if USE_ASAN
-yawl_CXXFLAGS := -march=x86-64 -mtune=generic -Og -ggdb -gdwarf-4 -fsanitize=address,undefined,cfi -fvisibility=hidden -Wno-backend-plugin
+yawl_CXXFLAGS := -march=$(COMPILER_MARCH) -Og -ggdb -gdwarf-4 -fsanitize=address,undefined,cfi -fvisibility=hidden -Wno-backend-plugin
 else
-yawl_CXXFLAGS := -march=x86_64 -mtune=x86_64 -static-libgcc -fno-rtti -fno-exceptions -static-libstdc++ -static -fPIC -fPIE -static-pie -Os -ffunction-sections -fdata-sections -Wl,--gc-sections,-s
+yawl_CXXFLAGS := -march=$(COMPILER_MARCH) -static-libgcc -fno-rtti -fno-exceptions -static-libstdc++ -static -fPIC -fPIE -static-pie -Os -ffunction-sections -fdata-sections -Wl,--gc-sections,-s
 endif
 yawl_LDFLAGS := $(yawl_CXXFLAGS)
 yawl_LDADD := $(NON_GLIB_LIBS) $(ALL_GLIB_LIBS)

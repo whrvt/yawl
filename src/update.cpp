@@ -31,11 +31,6 @@
 #define GITHUB_RELEASES_PAGE_URL PACKAGE_URL "/releases/download"
 #define UPDATE_USER_AGENT PROG_NAME "-updater/" VERSION
 
-/* temp files */
-#define RELEASE_INFO_FILE "latest_release.json"
-#define NEW_BINARY_FILE PROG_NAME ".new"
-#define BACKUP_SUFFIX ".bak"
-
 /* json-glib specific cleanup */
 static forceinline void cleanup_json_parser(void *p) {
     JsonParser **parser = (JsonParser **)p;
@@ -89,8 +84,11 @@ static RESULT parse_release_info(const char *json_path, char *tag_name[], char *
     }
 
     /* Format the download URL */
-    if (*tag_name)
-        join_paths(*download_url, GITHUB_RELEASES_PAGE_URL, *tag_name, PROG_NAME);
+    if (*tag_name) {
+        /* NOTE: x86_64 binaries are uploaded as just "yawl", aarch64 as "yawl-aarch64".
+         *       This is just for backwards compatibility. */
+        join_paths(*download_url, GITHUB_RELEASES_PAGE_URL, *tag_name, PROG_NAME_ARCH);
+    }
 
     if (!*download_url)
         return MAKE_RESULT(SEV_ERROR, CAT_JSON, E_OUT_OF_MEMORY);
@@ -193,7 +191,7 @@ static RESULT copy_file(const char *source, const char *destination) {
     RESULT result = RESULT_OK;
 
     autofree char *backup_file = nullptr;
-    join_paths(backup_file, config::yawl_dir, PROG_NAME BACKUP_SUFFIX);
+    join_paths(backup_file, config::yawl_dir, PROG_NAME ".bak");
 
     if (access(destination, F_OK) == 0) {
         if (access(backup_file, F_OK) == 0)
@@ -271,7 +269,7 @@ static RESULT replace_binary(const char *new_binary, const char *current_binary)
 
         /* Fallback method: Create a backup and use rename */
         autofree char *backup_file = nullptr;
-        append_sep(backup_file, "", current_binary, BACKUP_SUFFIX);
+        append_sep(backup_file, "", current_binary, ".bak");
 
         /* Step 1: Backup the current binary */
         if (access(backup_file, F_OK) == 0)
@@ -323,7 +321,7 @@ static RESULT check_for_updates(void) {
     LOG_INFO("Checking for updates...");
 
     /* Download release information */
-    join_paths(release_file, config::yawl_dir, RELEASE_INFO_FILE);
+    join_paths(release_file, config::yawl_dir, "latest_release.json");
     result = download_file(GITHUB_API_RELEASES_URL, release_file, headers);
     if (FAILED(result)) {
         LOG_RESULT(Level::Error, result, "Failed to download release information");
@@ -366,7 +364,7 @@ static RESULT perform_update(void) {
     RESULT result;
 
     /* Get the download URL from the saved file */
-    join_paths(release_file, config::yawl_dir, RELEASE_INFO_FILE);
+    join_paths(release_file, config::yawl_dir, "latest_release.json");
 
     autoclose FILE *fp = fopen(release_file, "r");
     if (!fp)
@@ -393,7 +391,7 @@ static RESULT perform_update(void) {
                     LOG_DEBUG("Using executable directory for download: %s", temp_dir);
                     download_dir = temp_dir;
                     temp_dir = nullptr; /* Transfer ownership, don't free */
-                    join_paths(temp_binary, download_dir, NEW_BINARY_FILE);
+                    join_paths(temp_binary, download_dir, PROG_NAME ".new");
                 }
             }
         }
@@ -402,7 +400,7 @@ static RESULT perform_update(void) {
     /* Use yawl_dir if exec dir is unwritable */
     if (!download_dir) {
         LOG_DEBUG("Using yawl directory for download: %s", config::yawl_dir);
-        join_paths(temp_binary, config::yawl_dir, NEW_BINARY_FILE);
+        join_paths(temp_binary, config::yawl_dir, PROG_NAME ".new");
     }
 
     LOG_INFO("Downloading update from %s", download_url, temp_binary);
