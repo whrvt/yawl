@@ -14,23 +14,9 @@
 #include "yawlconfig.hpp"
 #include "util.hpp"
 
-#include "fmt/compile.h"
 #include "fmt/printf.h"
 
-#pragma GCC diagnostic ignored "-Wunused-variable"
-
 namespace config {
-using namespace fmt::literals;
-
-const fmt::string_view RUNTIME_PREFIX = "SteamLinuxRuntime_";
-const fmt::string_view RUNTIME_VERSION = "sniper";
-const fmt::string_view RUNTIME_ARCHIVE_NAME =
-    fmt::format("{},{},{}"_cf, RUNTIME_PREFIX, RUNTIME_VERSION, ".tar.xz");
-const fmt::string_view RUNTIME_BASE_URL =
-    fmt::format("https://repo.steampowered.com/steamrt-images-{}/snapshots/latest-container-runtime-public-beta"_cf,
-                RUNTIME_VERSION);
-const fmt::string_view DEFAULT_EXEC_PATH = "/usr/bin/wine";
-const fmt::string_view CONFIG_EXTENSION = ".cfg";
 
 static std::string s_yawl_dir;
 static std::string s_config_dir;

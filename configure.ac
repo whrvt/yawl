@@ -1,4 +1,4 @@
-AC_INIT([yawl], [0.8.2], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
+AC_INIT([yawl], [0.8.3], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_SRCDIR([src/yawl.cpp])
 AC_CONFIG_HEADERS([config.h])
@@ -480,7 +480,7 @@ AC_LANG_PUSH([C++])
 
 # Shared flags/libraries for all targets
 CPPFLAGS="-D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
-CXXFLAGS="-std=gnu++26 -flto=thin -pthread -fwrapv -fno-strict-aliasing \
+CXXFLAGS="-std=gnu++26 -pthread -fwrapv -fno-strict-aliasing \
     -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
     -Wno-nullability-extension -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wl,-z,noexecstack \
     -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -pthread -W#pragma-messages"
