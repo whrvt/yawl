@@ -279,7 +279,7 @@ static RESULT setup_runtime(const struct options *opts) {
         if (FAILED(ret)) {
             int code = RESULT_CODE(ret);
             if (code == E_UNKNOWN || code == E_INVALID_ARG) {
-                // don't remove/delete anything
+                /* don't remove/delete anything */
                 LOG_DEBUG("Got an unknown error (%d) while verifying runtime! Stopping.", code);
                 ret = RESULT_FAIL;
                 return ret;
@@ -350,7 +350,7 @@ static RESULT setup_runtime(const struct options *opts) {
             if (FAILED(success)) {
                 int code = RESULT_CODE(success);
                 if (code == E_UNKNOWN || code == E_INVALID_ARG) {
-                    // don't remove/delete anything
+                    /* don't remove/delete anything */
                     LOG_DEBUG("Got an unknown error (%d) while verifying runtime! Stopping.", code);
                     ret = RESULT_FAIL;
                     return ret;

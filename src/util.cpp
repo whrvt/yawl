@@ -549,7 +549,7 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
 #define CHILD_ERROR_CHDIR 101
 #define CHILD_ERROR_STDOUT 102
 #define CHILD_ERROR_STDERR 103
-#define CHILD_ERROR_EXECV 127 // command not found
+#define CHILD_ERROR_EXECV 127 /* command not found */
 
 int execute_program(const char *const argv[], const char *working_dir, const char *stdout_path,
                     const char *stderr_path) {
@@ -603,7 +603,7 @@ int execute_program(const char *const argv[], const char *working_dir, const cha
         case CHILD_ERROR_EXECV:
             LOG_DEBUG("after fork: file not found (argv[0]: %s)", argv[0]);
             break;
-        default: // execv return status
+        default: /* execv return status */
             break;
         }
         return childstatus;

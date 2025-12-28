@@ -153,7 +153,7 @@ void _log_message(Level level, const char *file, int line, const char *format, .
 
         va_start(args, format);
         if (!vasprintf(&message, format, args)) {
-        } // glibc compatibility
+        } /* glibc compatibility */
         va_end(args);
 
         notif = notify_notification_new(PROG_NAME, message, "dialog-information");
