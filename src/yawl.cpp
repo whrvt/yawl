@@ -31,9 +31,15 @@
 
 using namespace fmt::literals;
 
+#if YAWL_ARCH_AARCH64
+#define RUNTIME_ARCHIVE_EXTRA_SUFFIX "-arm64"
+#else
+#define RUNTIME_ARCHIVE_EXTRA_SUFFIX
+#endif
+
 #define RUNTIME_PREFIX "SteamLinuxRuntime_"
 #define RUNTIME_VERSION "sniper"
-#define RUNTIME_ARCHIVE_NAME RUNTIME_PREFIX RUNTIME_VERSION ".tar.xz"
+#define RUNTIME_NAME RUNTIME_PREFIX RUNTIME_VERSION RUNTIME_ARCHIVE_EXTRA_SUFFIX
 
 #define RUNTIME_BASE_URL                                                                                               \
     "https://repo.steampowered.com/steamrt-images-" RUNTIME_VERSION "/snapshots/latest-container-runtime-public-beta"
@@ -178,7 +184,6 @@ static RESULT parse_env_options(struct options *opts) {
 static RESULT verify_runtime(nonnull_charp runtime_path) {
     autofree char *versions_txt_path = nullptr;
     autofree char *pv_verify_path = nullptr;
-    RESULT result;
 
     /* First, a lightweight check for VERSIONS.txt (same as the SLR shell script) */
     join_paths(versions_txt_path, runtime_path, "VERSIONS.txt");
@@ -196,35 +201,18 @@ static RESULT verify_runtime(nonnull_charp runtime_path) {
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_NOT_FOUND);
     }
 
-    autofree char *cmd = nullptr;
-    append_sep(cmd, " ", pv_verify_path, "--quiet");
-
-    autofree char *old_cwd = getcwd(nullptr, 0);
-
-    if (chdir(runtime_path) != 0) {
-        result = result_from_errno();
-        LOG_RESULT(Level::Error, result, "Failed to change to runtime directory");
-        return result;
-    }
-
-    /* Run pv-verify */
-#pragma message "FIXME: don't use system(3)"
-    int cmd_ret = system(cmd);
-
-    /* Restore directory */
-    if (chdir(old_cwd) != 0) {
-        result = result_from_errno();
-        LOG_RESULT(Level::Error, result, "Failed to restore directory");
-        return result;
-    }
+    const char *argv[] = {pv_verify_path, "--quiet", nullptr};
+    int cmd_ret = execute_program(argv, runtime_path);
 
     if (cmd_ret != 0) {
-        LOG_ERROR("pv-verify reported verification errors (exit code %d).", WEXITSTATUS(cmd_ret));
-        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_INVALID_ARG);
+        LOG_ERROR("pv-verify reported verification errors (exit code %d).", cmd_ret);
+        /* checking verify.c, it can only return EX_USAGE (64), 1 (failure), or 0 (success)
+         * so treat any other error as E_UNKNOWN */
+        return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, cmd_ret == 64 ? E_INVALID_ARG : cmd_ret == 1 ? E_ACCESS_DENIED : E_UNKNOWN);
     }
 
     autofree char *entry_point = nullptr;
-    join_paths(entry_point, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, config::yawl_dir, RUNTIME_NAME "/_v2-entry-point");
 
     if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
@@ -247,7 +235,7 @@ static RESULT verify_slr_hash(nonnull_charp archive_path, nonnull_charp hash_url
     char actual_hash[65] = {};
     RESULT result;
 
-    result = get_online_slr_sha256sum(RUNTIME_ARCHIVE_NAME, hash_url, expected_hash);
+    result = get_online_slr_sha256sum(RUNTIME_NAME ".tar.xz", hash_url, expected_hash);
     if (FAILED(result)) {
         LOG_WARNING("Unexpected error while trying to obtain the hash from the SHA256SUMS file.");
         LOG_WARNING("Attempting to proceed with unverified archive.");
@@ -258,7 +246,7 @@ static RESULT verify_slr_hash(nonnull_charp archive_path, nonnull_charp hash_url
     LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Could not calculate hash");
 
     if (!STRING_EQUALS(expected_hash, actual_hash)) {
-        LOG_WARNING("Archive hash mismatch.");
+        LOG_WARNING("Archive hash mismatch, expected: %s got: %s", expected_hash, actual_hash);
         return MAKE_RESULT(SEV_ERROR, CAT_RUNTIME, E_INVALID_ARG);
     }
 
@@ -273,8 +261,8 @@ static RESULT setup_runtime(const struct options *opts) {
     autofree char *runtime_path = nullptr;
     struct stat st;
 
-    join_paths(archive_path, config::yawl_dir, RUNTIME_ARCHIVE_NAME);
-    join_paths(runtime_path, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION);
+    join_paths(archive_path, config::yawl_dir, RUNTIME_NAME ".tar.xz");
+    join_paths(runtime_path, config::yawl_dir, RUNTIME_NAME);
 
     if (!(stat(runtime_path, &st) == 0 && S_ISDIR(st.st_mode))) {
         LOG_INFO("Installing runtime...");
@@ -289,6 +277,13 @@ static RESULT setup_runtime(const struct options *opts) {
         LOG_INFO("Verifying existing runtime folder integrity...");
         ret = verify_runtime(runtime_path);
         if (FAILED(ret)) {
+            int code = RESULT_CODE(ret);
+            if (code == E_UNKNOWN || code == E_INVALID_ARG) {
+                /* don't remove/delete anything */
+                LOG_DEBUG("Got an unknown error (%d) while verifying runtime! Stopping.", code);
+                ret = RESULT_FAIL;
+                return ret;
+            }
             RESULT remove_result = remove_dir(runtime_path);
             if (FAILED(remove_result))
                 LOG_RESULT(Level::Warning, remove_result, "Failed to remove corrupt runtime directory");
@@ -334,7 +329,7 @@ static RESULT setup_runtime(const struct options *opts) {
             }
 
             if (download) {
-                success = download_file(RUNTIME_BASE_URL "/" RUNTIME_ARCHIVE_NAME, archive_path, nullptr);
+                success = download_file(RUNTIME_BASE_URL "/" RUNTIME_NAME ".tar.xz", archive_path, nullptr);
                 if (FAILED(success)) {
                     LOG_RESULT(Level::Error, success, "Failed to download runtime");
                     unlink(archive_path);
@@ -353,6 +348,13 @@ static RESULT setup_runtime(const struct options *opts) {
             LOG_INFO("Verifying runtime folder integrity...");
             success = verify_runtime(runtime_path);
             if (FAILED(success)) {
+                int code = RESULT_CODE(success);
+                if (code == E_UNKNOWN || code == E_INVALID_ARG) {
+                    /* don't remove/delete anything */
+                    LOG_DEBUG("Got an unknown error (%d) while verifying runtime! Stopping.", code);
+                    ret = RESULT_FAIL;
+                    return ret;
+                }
                 LOG_RESULT(Level::Error, success, "Runtime verification failed");
                 continue;
             }
@@ -395,13 +397,24 @@ static char *build_library_paths(nonnull_charp exec_path) {
     if (top_libdir && stat(top_libdir, &st) == 0 && S_ISDIR(st.st_mode))
         append_sep(result, "", orig_path ? ":" : "", top_libdir, "/lib64:", top_libdir, "/lib32:", top_libdir, "/lib");
 
+#ifdef YAWL_ARCH_AARCH64
+    if (stat("/usr/aarch64-linux-gnu/lib", &st) == 0 && S_ISDIR(st.st_mode))
+        append_sep(result, "", result ? ":" : "", "/usr/aarch64-linux-gnu/lib");
+#endif
+
     return result;
 }
 
 /* required for ancient Debian/Ubuntu */
 static char *build_mesa_paths(void) {
     const char *mesa_paths[] = {"/usr/lib/i386-linux-gnu/dri",
+                                "/usr/i386-linux-gnu/lib/dri",
+                                "/usr/i386-linux-gnu/lib32/dri",
                                 "/usr/lib/x86_64-linux-gnu/dri",
+                                "/usr/x86_64-linux-gnu/lib/dri",
+                                "/usr/x86_64-linux-gnu/lib64/dri",
+                                "/usr/lib/aarch64-linux-gnu/dri",
+                                "/usr/aarch64-linux-gnu/lib/dri",
                                 "/usr/lib/dri",
                                 "/usr/lib32/dri",
                                 "/usr/lib64/dri",
@@ -423,7 +436,7 @@ static char *build_mesa_paths(void) {
 /* Create a configuration file with the current options */
 static RESULT create_config_file(nonnull_charp config_name, const struct options *opts) {
     autofree char *config_path = nullptr;
-    FILE *fp = nullptr;
+    autoclose FILE *fp = nullptr;
     RESULT result = RESULT_OK;
 
     /* Build the config file path */
@@ -445,7 +458,6 @@ static RESULT create_config_file(nonnull_charp config_name, const struct options
     else if (opts->exec_path && !STRING_EQUALS(opts->exec_path, DEFAULT_EXEC_PATH))
         fmt::fprintf(fp, "exec=%s\n", opts->exec_path);
 
-    fclose(fp);
     LOG_INFO("Created configuration file: %s", config_path);
 
     return result;
@@ -739,6 +751,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* Set up library paths based on the executable path */
+    char *lib_paths = build_library_paths(opts.exec_path);
+    if (lib_paths) {
+        setenv("LD_LIBRARY_PATH", lib_paths, 1);
+        free(lib_paths);
+    }
+
     result = setup_runtime(&opts);
     LOG_AND_RETURN_IF_FAILED(Level::Error, result, "Failed setting up the runtime");
 
@@ -748,7 +767,7 @@ int main(int argc, char *argv[]) {
     }
 
     char *entry_point = nullptr;
-    join_paths(entry_point, config::yawl_dir, RUNTIME_PREFIX RUNTIME_VERSION "/_v2-entry-point");
+    join_paths(entry_point, config::yawl_dir, RUNTIME_NAME "/_v2-entry-point");
     if (!is_exec_file(entry_point)) {
         LOG_ERROR("Runtime entry point not found: %s", entry_point);
         return 1;
@@ -772,13 +791,6 @@ int main(int argc, char *argv[]) {
 
     for (int i = 1; i < argc; i++) {
         new_argv[i + args_sum] = argv[i];
-    }
-
-    /* Set up library paths based on the executable path */
-    char *lib_paths = build_library_paths(opts.exec_path);
-    if (lib_paths) {
-        setenv("LD_LIBRARY_PATH", lib_paths, 1);
-        free(lib_paths);
     }
 
     char *mesa_paths = build_mesa_paths();

@@ -11,6 +11,8 @@
 #include <cctype>
 #include <cerrno>
 #include <cstring>
+#include <fcntl.h>
+#include <sys/wait.h>
 #include <wordexp.h>
 
 #include "archive.h"
@@ -440,7 +442,7 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
              (res == CURLE_SSL_INVALIDCERTSTATUS) ||
              (res == CURLE_SSL_CLIENTCERT)))
         {
-        // clang-format on
+            // clang-format on
             broken_user_certificate_workaround = 1;
             LOG_ERROR(
                 "Your system's CA root certificate store is either missing or misconfigured. CURL error %u:\n\t%s", res,
@@ -450,7 +452,9 @@ RESULT download_file(const char *url, const char *output_path, const char *heade
         }
         if (!broken_user_ssl_workaround && (res == CURLE_PEER_FAILED_VERIFICATION)) {
             broken_user_ssl_workaround = 1;
-            LOG_ERROR("SSL peer verification failed. Fix your system's network configuration, but trying to download %s again without it...", url);
+            LOG_ERROR("SSL peer verification failed. Fix your system's network configuration, but trying to download "
+                      "%s again without it...",
+                      url);
             return download_file(url, output_path, headers);
         }
         return MAKE_RESULT(SEV_ERROR, CAT_NETWORK, res);
@@ -540,6 +544,72 @@ RESULT extract_archive(const char *archive_path, const char *extract_path) {
     }
 
     return result;
+}
+
+#define CHILD_ERROR_CHDIR 101
+#define CHILD_ERROR_STDOUT 102
+#define CHILD_ERROR_STDERR 103
+#define CHILD_ERROR_EXECV 127 /* command not found */
+
+int execute_program(const char *const argv[], const char *working_dir, const char *stdout_path,
+                    const char *stderr_path) {
+    if (!argv || !argv[0])
+        return -1;
+
+    pid_t pid = fork();
+    if (pid == -1)
+        return -1;
+
+    if (pid == 0) {
+        /* child */
+        if (working_dir && chdir(working_dir) != 0)
+            _exit(CHILD_ERROR_CHDIR);
+
+        if (stdout_path) {
+            int fd = open(stdout_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd == -1 || dup2(fd, STDOUT_FILENO) == -1)
+                _exit(CHILD_ERROR_STDOUT);
+            close(fd);
+        }
+
+        if (stderr_path) {
+            int fd = open(stderr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd == -1 || dup2(fd, STDERR_FILENO) == -1)
+                _exit(CHILD_ERROR_STDERR);
+            close(fd);
+        }
+
+        execv(argv[0], (char *const *)argv);
+        _exit(CHILD_ERROR_EXECV);
+    }
+
+    /* parent */
+    int status;
+    if (waitpid(pid, &status, 0) == -1)
+        return -1;
+
+    if (WIFEXITED(status)) {
+        int childstatus = WEXITSTATUS(status);
+        switch (childstatus) {
+        case CHILD_ERROR_CHDIR:
+            LOG_DEBUG("after fork: chdir failed");
+            break;
+        case CHILD_ERROR_STDOUT:
+            LOG_DEBUG("after fork: stdout dup failed");
+            break;
+        case CHILD_ERROR_STDERR:
+            LOG_DEBUG("after fork: stderr dup failed");
+            break;
+        case CHILD_ERROR_EXECV:
+            LOG_DEBUG("after fork: file not found (argv[0]: %s)", argv[0]);
+            break;
+        default: /* execv return status */
+            break;
+        }
+        return childstatus;
+    }
+
+    return -1;
 }
 
 RESULT remove_verbs_from_env(const char *verbs_to_remove[], int num_verbs) {

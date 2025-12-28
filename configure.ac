@@ -1,4 +1,4 @@
-AC_INIT([yawl], [0.7.2], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
+AC_INIT([yawl], [0.8.0], [william@horvath.blog], [], [https://github.com/whrvt/yawl])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_SRCDIR([src/yawl.cpp])
 AC_CONFIG_HEADERS([config.h])
@@ -9,15 +9,33 @@ AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
 
-AM_INIT_AUTOMAKE([foreign subdir-objects parallel-tests])
-AM_SILENT_RULES([yes])
-
 AC_ARG_WITH([asan],
     AS_HELP_STRING([--with-asan], [Build with ASan support (default: no)]))
 
+AC_CANONICAL_HOST
+
+COMPILER_MARCH="${host_cpu}"
+AS_IF([test "$host_cpu" = "aarch64"], [
+    with_asan=no # not supported yet (only zig build)
+    COMPILER_MARCH=generic
+    AC_DEFINE([YAWL_ARCH_AARCH64], [1], [Defined if building for aarch64.])
+], [
+    # must be x86-64
+    AS_IF([test "x$with_asan" = "xyes"], [
+        COMPILER_MARCH="${host_cpu//_/-}"
+    ])
+    # zig takes x86_64, not x86-64
+    AC_DEFINE([YAWL_ARCH_AMD64], [1], [Defined if building for x86-64.])
+])
+
+AC_SUBST([COMPILER_MARCH])
+
+AM_INIT_AUTOMAKE([foreign subdir-objects parallel-tests])
+AM_SILENT_RULES([yes])
+
 top_srcdir_actual="$am_aux_dir/.." # autotools!
 
-AS_IF([test "x$with_asan" = "xyes"], [depdir="deps-asan"], [depdir="deps"])
+AS_IF([test "x$with_asan" = "xyes"], [depdir="deps-asan-${host_cpu}"], [depdir="deps-${host_cpu}"])
 
 # Set up build directories
 deps_builddir="$top_srcdir_actual/$depdir/build"
@@ -32,12 +50,14 @@ AC_SUBST([cch])
 export PATH="${build_prefix}:${build_prefix}/zig:$am_aux_dir:${PATH}"
 AC_SUBST([PATH])
 
-rm -f "$build_prefix"/{musl-gcc,clang*,ld,zigcc*,zigcpp*,ar,ranlib} # clear out existing ccache wrappers
+# clear out existing ccache wrappers
+rm -f "$build_prefix"/{musl-gcc,clang*,*ld,zigcc*,zigcpp*,*ar,*ranlib,*clang,*cc,*++}
+rm -f "$build_prefix"/{musl-gcc,clang*,*ld,zigcc*,zigcpp*,*ar,*ranlib,*clang,*cc,*++} # clear out existing ccache wrappers
 
 AC_PATH_PROG([CCACHE], [ccache], [])
 
 AS_IF([test "x$with_asan" = "xyes"], [
-    EXTRA_CFLAGS="-Og -march=x86-64 -mtune=generic -ggdb -gdwarf-4 -fsanitize=address -Wno-backend-plugin"
+    EXTRA_CFLAGS="-Og -march=${COMPILER_MARCH} -ggdb -gdwarf-4 -fsanitize=address -Wno-backend-plugin"
     export USING_MUSL="OFF"
 
     CCTESTPROG=clang
@@ -65,8 +85,20 @@ __EOF__
 #!/usr/bin/env bash
 $CCACHE $CXX_REAL -Qunused-arguments -fuse-ld=lld "\$@"
 __EOF__
+
+# make symlinks with target triple prepended
+ln -s "$build_prefix/clang" "$build_prefix/${host}-gcc"
+ln -s "$build_prefix/clang++" "$build_prefix/${host}-g++"
+ln -s "$build_prefix/clang" "$build_prefix/${host}-clang"
+ln -s "$build_prefix/clang++" "$build_prefix/${host}-clang++"
+ln -s "$build_prefix/clang" "$build_prefix/${host}-cc"
+ln -s "$build_prefix/clang++" "$build_prefix/${host}-c++"
+
+ln -s "$build_prefix/ld" "$build_prefix/${host}-ld"
+ln -s "$build_prefix/ar" "$build_prefix/${host}-ar"
+ln -s "$build_prefix/ranlib" "$build_prefix/${host}-ranlib"
 ], [
-    EXTRA_CFLAGS="-Os -march=x86_64 -mtune=x86_64 -Wl,--gc-sections,-s -static"
+    EXTRA_CFLAGS="-Os -march=${COMPILER_MARCH} -Wl,--gc-sections,-s -static"
     export USING_MUSL="ON"
 
     AS_IF([test -z $ZIG], [
@@ -89,7 +121,7 @@ __EOF__
 
     install -Dm755 /dev/stdin "$build_prefix"/zigcc-tobewrapped <<__EOF__
 #!/usr/bin/env bash
-zig cc -target x86_64-linux-musl -Qunused-arguments "\$@"
+zig cc -target ${host_cpu}-linux-musl -Qunused-arguments "\$@"
 __EOF__
     AC_PATH_PROG([ZIGCC_REAL], [zigcc-tobewrapped])
     install -Dm755 /dev/stdin "$build_prefix"/zigcc <<__EOF__
@@ -102,7 +134,7 @@ __EOF__
 
     install -Dm755 /dev/stdin "$build_prefix"/zigcpp-tobewrapped <<__EOF__
 #!/usr/bin/env bash
-zig c++ -target x86_64-linux-musl -Qunused-arguments "\$@"
+zig c++ -target ${host_cpu}-linux-musl -Qunused-arguments "\$@"
 __EOF__
     AC_PATH_PROG([ZIGCPP_REAL], [zigcpp-tobewrapped])
     install -Dm755 /dev/stdin "$build_prefix"/zigcpp <<__EOF__
@@ -113,6 +145,27 @@ __EOF__
     export ZIGCPP="zigcpp"
     AC_SUBST([ZIGCPP])
     CXXTESTPROG=zigcpp
+
+# ld wrapper
+    install -Dm755 /dev/stdin "$build_prefix"/ld <<__EOF__
+#!/usr/bin/env bash
+$ZIGCC_REAL ld.lld "\$@"
+__EOF__
+
+# make symlinks with target triple prepended
+# just do both -gnu- and -musl- for redundancy
+for libc in gnu musl; do
+ln -s "$build_prefix/zigcc" "$build_prefix/${host_cpu}-pc-linux-$libc-gcc"
+ln -s "$build_prefix/zigcpp" "$build_prefix/${host_cpu}-pc-linux-$libc-g++"
+ln -s "$build_prefix/zigcc" "$build_prefix/${host_cpu}-pc-linux-$libc-clang"
+ln -s "$build_prefix/zigcpp" "$build_prefix/${host_cpu}-pc-linux-$libc-clang++"
+ln -s "$build_prefix/zigcc" "$build_prefix/${host_cpu}-pc-linux-$libc-cc"
+ln -s "$build_prefix/zigcpp" "$build_prefix/${host_cpu}-pc-linux-$libc-c++"
+
+ln -s "$build_prefix/ld" "$build_prefix/${host_cpu}-pc-linux-$libc-ld"
+ln -s "$build_prefix/ar" "$build_prefix/${host_cpu}-pc-linux-$libc-ar"
+ln -s "$build_prefix/ranlib" "$build_prefix/${host_cpu}-pc-linux-$libc-ranlib"
+done
 ])
 
 AC_PROG_CC([$CCTESTPROG])
@@ -129,9 +182,9 @@ EOF
 
 export PKG_CONFIG="$build_prefix"/pkg-config
 AC_SUBST([PKG_CONFIG])
-export PKG_CONFIG_PATH="$deps_prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="$deps_prefix/lib/pkgconfig:$deps_prefix/lib64/pkgconfig"
 AC_SUBST([PKG_CONFIG_PATH])
-export PKG_CONFIG_LIBDIR="$deps_prefix/lib:$PKG_CONFIG_LIBDIR"
+export PKG_CONFIG_LIBDIR="$PKG_CONFIG_PATH"
 AC_SUBST([PKG_CONFIG_LIBDIR])
 
 AC_DEFUN([AC_PROG_PERL], [
@@ -201,9 +254,9 @@ export LD="$CC"
 shared_includes="-D_GNU_SOURCE -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -I$deps_prefix/include"
 shared_flags="$EXTRA_CFLAGS -flto=thin -ffunction-sections -fdata-sections \
     -fwrapv -fno-strict-aliasing -ffat-lto-objects -fno-exceptions -fPIC -fPIE \
-    -pthread -fcf-protection=full -fstack-clash-protection -fstack-protector-all \
-    -static-libgcc -L$deps_prefix/lib -Wl,-z,noexecstack \
+    -pthread -static-libgcc -L$deps_prefix/lib -Wl,-z,noexecstack \
     -Wno-date-time -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed"
+
 export CPPFLAGS="$shared_includes"
 export CFLAGS="$shared_includes $shared_flags"
 export CXXFLAGS="$shared_includes $shared_flags -static-libstdc++"
@@ -229,7 +282,7 @@ export CMAKE NINJA MESON
 # Download and build mimalloc (to replace the slow musl malloc)
 if ! test -f "$build_prefix/lib/mimalloc.o" && ! test "x$with_asan" = "xyes"; then
     AC_MSG_NOTICE([Building mimalloc])
-    bash $am_aux_dir/download-deps.sh mimalloc "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build mimalloc])
+    bash $am_aux_dir/download-deps.sh mimalloc "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build mimalloc])
     cp $deps_prefix/lib/*malloc* $build_prefix/lib/
     cp -r $deps_prefix/include/*malloc* $build_prefix/include/
 fi
@@ -248,49 +301,49 @@ AC_SUBST([LD])
 # Download and build libunistring (needed for idn and psl)
 if ! test -f "$build_prefix/lib/libunistring.a"; then
     AC_MSG_NOTICE([Building libunistring])
-    bash $am_aux_dir/download-deps.sh libunistring "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libunistring])
+    bash $am_aux_dir/download-deps.sh libunistring "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build libunistring])
     cp $deps_prefix/lib/libunistring.a $build_prefix/lib/
 fi
 
 # Download and build libidn2 (needed for curl/openssl)
 if ! test -f "$build_prefix/lib/libidn2.a"; then
     AC_MSG_NOTICE([Building libidn2])
-    bash $am_aux_dir/download-deps.sh libidn2 "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libidn2])
+    bash $am_aux_dir/download-deps.sh libidn2 "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build libidn2])
     cp $deps_prefix/lib/libidn2.a $build_prefix/lib/
 fi
 
 # Download and build libpsl (needed for curl/openssl)
 if ! test -f "$build_prefix/lib/libpsl.a"; then
     AC_MSG_NOTICE([Building libpsl])
-    bash $am_aux_dir/download-deps.sh libpsl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libpsl])
+    bash $am_aux_dir/download-deps.sh libpsl "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build libpsl])
     cp $deps_prefix/lib/libpsl.a $build_prefix/lib/
 fi
 
 # Download and build libz
 if ! test -f "$build_prefix/lib/libz.a"; then
     AC_MSG_NOTICE([Building libz])
-    bash $am_aux_dir/download-deps.sh libz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libz])
+    bash $am_aux_dir/download-deps.sh libz "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build libz])
     cp $deps_prefix/lib/libz.a $build_prefix/lib/
 fi
 
 # Download and build xz
 if ! test -f "$build_prefix/lib/liblzma.a"; then
     AC_MSG_NOTICE([Building xz])
-    bash $am_aux_dir/download-deps.sh xz "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build xz])
+    bash $am_aux_dir/download-deps.sh xz "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build xz])
     cp $deps_prefix/lib/liblzma.a $build_prefix/lib/
 fi
 
 # Download and build zstd
 if ! test -f "$build_prefix/lib/libzstd.a"; then
     AC_MSG_NOTICE([Building zstd])
-    bash $am_aux_dir/download-deps.sh zstd "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build zstd])
+    bash $am_aux_dir/download-deps.sh zstd "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build zstd])
     cp $deps_prefix/lib/libzstd.a $build_prefix/lib/
 fi
 
 # Download and build openssl
 if ! test -f "$build_prefix/lib/libssl.a" || ! test -f "$build_prefix/lib/libcrypto.a"; then
     AC_MSG_NOTICE([Building openssl])
-    bash $am_aux_dir/download-deps.sh openssl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build openssl])
+    bash $am_aux_dir/download-deps.sh openssl "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build openssl])
     cp $deps_prefix/lib/libssl.a $build_prefix/lib/
     cp $deps_prefix/lib/libcrypto.a $build_prefix/lib/
     cp -r $deps_prefix/include/openssl $build_prefix/include/
@@ -301,10 +354,10 @@ if ! test -f "$build_prefix/lib/libarchive.a"; then
     # Download and build bzip2 (required for .bz2 support for libarchive)
     if ! test -f "$deps_prefix/lib/libbz2.a"; then
         AC_MSG_NOTICE([Building bzip2])
-        bash $am_aux_dir/download-deps.sh bzip2 "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build bzip2])
+        bash $am_aux_dir/download-deps.sh bzip2 "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build bzip2])
     fi
     AC_MSG_NOTICE([Building libarchive])
-    bash $am_aux_dir/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libarchive])
+    bash $am_aux_dir/download-deps.sh libarchive "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build libarchive])
     cp $deps_prefix/lib/{libarchive.a,libbz2.a} $build_prefix/lib/
     cp $deps_prefix/include/archive* $build_prefix/include/
 fi
@@ -312,14 +365,14 @@ fi
 # Download and build c-ares (required for curl to resolve hostnames properly vs musl's resolver)
 if ! test -f "$build_prefix/lib/libcares.a"; then
     AC_MSG_NOTICE([Building c-ares])
-    bash $am_aux_dir/download-deps.sh ares "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build c-ares (required to build curl)])
+    bash $am_aux_dir/download-deps.sh ares "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build c-ares (required to build curl)])
     cp $deps_prefix/lib/libcares.a $build_prefix/lib/
 fi
 
 # Download and build curl
 if ! test -f "$build_prefix/lib/libcurl.a"; then
     AC_MSG_NOTICE([Building curl])
-    bash $am_aux_dir/download-deps.sh curl "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build curl])
+    bash $am_aux_dir/download-deps.sh curl "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build curl])
     cp $deps_prefix/lib/libcurl.a $build_prefix/lib/
     cp -r $deps_prefix/include/curl $build_prefix/include/
 fi
@@ -329,21 +382,21 @@ if ! test -f "$build_prefix/lib/libnotify.a" || ! test -f "$build_prefix/lib/lib
     # Download and build libffi (required for gdk-pixbuf)
     if ! test -f "$deps_prefix/lib/libffi.a"; then
         AC_MSG_NOTICE([Building libffi])
-        bash $am_aux_dir/download-deps.sh libffi "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libffi])
+        bash $am_aux_dir/download-deps.sh libffi "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build libffi])
     fi
     # Download and build gdk-pixbuf (only required for libnotify)
     if ! test -f "$deps_prefix/lib/libgdk_pixbuf-2.0.a"; then
         AC_MSG_NOTICE([Building gdk-pixbuf])
-        bash $am_aux_dir/download-deps.sh gdk-pixbuf "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build gdk-pixbuf])
+        bash $am_aux_dir/download-deps.sh gdk-pixbuf "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build gdk-pixbuf])
     fi
     # Download and build json-glib
     if ! test -f "$deps_prefix/lib/libjson-glib-1.0.a"; then
         AC_MSG_NOTICE([Building json-glib])
-        bash $am_aux_dir/download-deps.sh json-glib "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build json-glib])
+        bash $am_aux_dir/download-deps.sh json-glib "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build json-glib])
     fi
     if ! test -f "$deps_prefix/lib/libnotify.a"; then
         AC_MSG_NOTICE([Building libnotify])
-        bash $am_aux_dir/download-deps.sh libnotify "$deps_builddir" "$deps_prefix" || AC_MSG_ERROR([Failed to build libnotify])
+        bash $am_aux_dir/download-deps.sh libnotify "$deps_builddir" "$deps_prefix" "$host_cpu" || AC_MSG_ERROR([Failed to build libnotify])
     fi
     cp $deps_prefix/lib/libnotify.a $build_prefix/lib/
     cp $deps_prefix/lib/libglib-2.0.a $build_prefix/lib/
@@ -363,7 +416,7 @@ fi
 # Download and build libcap (for nsenter functionality)
 if ! test -f "$build_prefix/lib/libcap.a"; then
     AC_MSG_NOTICE([Building libcap])
-    { bash $am_aux_dir/download-deps.sh libcap "$deps_builddir" "$deps_prefix" &&
+    { bash $am_aux_dir/download-deps.sh libcap "$deps_builddir" "$deps_prefix" "$host_cpu" &&
     cp $deps_prefix/lib/libcap.a $build_prefix/lib/ &&
     cp -r $deps_prefix/include/linux $build_prefix/include/ &&
     cp $deps_prefix/include/capability.h $build_prefix/include; } || AC_MSG_ERROR([Failed to build libcap])
@@ -372,7 +425,7 @@ fi
 # Download and build fmtlib headers (for better string formatting)
 if ! test -f "$build_prefix/include/fmt/format.h"; then
     AC_MSG_NOTICE([Building libfmt])
-    { bash $am_aux_dir/download-deps.sh fmt "$deps_builddir" "$deps_prefix" &&
+    { bash $am_aux_dir/download-deps.sh fmt "$deps_builddir" "$deps_prefix" "$host_cpu" &&
     cp $deps_prefix/lib/libfmt.a $build_prefix/lib/ &&
     cp -r $deps_prefix/include/fmt $build_prefix/include/; } || AC_MSG_ERROR([Failed to build libfmt])
 fi
@@ -428,8 +481,7 @@ AC_LANG_PUSH([C++])
 # Shared flags/libraries for all targets
 CPPFLAGS="-D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE $NON_GLIB_CPPFLAGS $ALL_GLIB_CPPFLAGS"
 CXXFLAGS="-std=gnu++26 -flto=thin -pthread -fwrapv -fno-strict-aliasing \
-    -fcf-protection=full -fstack-protector -fstack-clash-protection \
-    -fstack-protector-all -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
+    -Wall -Werror -Wextra -Wpedantic -Wno-unused-command-line-argument -Wno-gnu-include-next -Wno-gnu-zero-variadic-macro-arguments \
     -Wno-nullability-extension -Wno-c99-extensions -Wno-c23-extensions -Wno-zero-length-array -Wl,-z,noexecstack \
     -Wl,-z,defs -Wl,-z,relro,-z,now -Wl,--as-needed -pthread -W#pragma-messages"
 CFLAGS="$CXXFLAGS"

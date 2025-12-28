@@ -22,7 +22,6 @@
 
 /* Test if the container works by running a simple command inside it */
 static RESULT test_container(const char *entry_point) {
-    autofree char *test_cmd = nullptr;
     autofree_del char *stdout_file = nullptr;
     autofree_del char *stderr_file = nullptr;
     autoclose FILE *stderr_fp = nullptr;
@@ -33,14 +32,12 @@ static RESULT test_container(const char *entry_point) {
     join_paths(stdout_file, config::yawl_dir, "test_stdout.tmp");
     join_paths(stderr_file, config::yawl_dir, "test_stderr.tmp");
 
-    append_sep(test_cmd, " ", entry_point, "--verb=waitforexitandrun", "--", "/bin/true", ">", stdout_file, "2>",
-               stderr_file);
+    const char *argv[] = {entry_point, "--verb=waitforexitandrun", "--", "/bin/true", nullptr};
 
-    LOG_DEBUG("Testing container with command: %s", test_cmd);
+    LOG_DEBUG("Testing container with: %s %s %s %s", argv[0], argv[1], argv[2], argv[3]);
 
     /* Run the test */
-#pragma message "FIXME: don't use system(3)"
-    ret = system(test_cmd);
+    ret = execute_program(argv, nullptr, stdout_file, stderr_file);
 
     /* Check stderr for AppArmor issues */
     stderr_fp = fopen(stderr_file, "r");
@@ -58,7 +55,7 @@ static RESULT test_container(const char *entry_point) {
         LOG_DEBUG("AppArmor restriction detected");
         return MAKE_RESULT(SEV_ERROR, CAT_APPARMOR, E_ACCESS_DENIED);
     } else if (ret != 0) {
-        LOG_WARNING("Container test exited with code %d", WEXITSTATUS(ret));
+        LOG_WARNING("Container test exited with code %d", ret);
         return MAKE_RESULT(SEV_ERROR, CAT_APPARMOR, E_UNKNOWN);
     }
 
@@ -129,7 +126,7 @@ static RESULT install_apparmor_profile(void) {
 
     LOG_DEBUG("Running installation command: %s", install_cmd);
 
-#pragma message "FIXME: don't use system(3)"
+    /* system() is intentional here - we need the host shell to run host tools (pkexec, etc.) */
     ret = system(install_cmd);
     if (ret != 0)
         result = MAKE_RESULT(SEV_ERROR, CAT_APPARMOR, E_ACCESS_DENIED);

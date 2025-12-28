@@ -1397,7 +1397,7 @@ int do_nsenter(int argc, char *argv[], unsigned long pid_to_enter) {
         close(env_fd);
     }
 
-    // Join into the target cgroup
+    /* Join into the target cgroup */
     if (cgroup_procs_fd >= 0)
         join_into_cgroup();
 
